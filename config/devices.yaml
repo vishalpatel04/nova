@@ -1,0 +1,69 @@
+# Device type definitions — identity is set per-node via environment, not here.
+# This file defines capability templates and pairing policies.
+
+device_types:
+  macos_worker:
+    description: macOS worker daemon (launchd-managed)
+    default_capabilities:
+      - shell
+      - filesystem
+      - spotlight
+      - ripgrep
+      - git
+      - github_cli
+      - codex
+      - cursor
+      - ollama
+      - browser
+      - applescript
+      - screenshot
+      - desktop_automation
+      - ppt_render
+    heartbeat_interval_seconds: 30
+    stale_threshold_seconds: 90
+
+  macos_genie:
+    description: macOS menu-bar genie client
+    default_capabilities: []
+    heartbeat_interval_seconds: 60
+    stale_threshold_seconds: 180
+
+  iphone_client:
+    description: iPhone SwiftUI client
+    default_capabilities: []
+    heartbeat_interval_seconds: 120
+    stale_threshold_seconds: 300
+
+  linux_worker:
+    description: Future Linux worker node
+    default_capabilities:
+      - shell
+      - filesystem
+      - ripgrep
+      - git
+      - github_cli
+    heartbeat_interval_seconds: 30
+    stale_threshold_seconds: 90
+
+  cloud_worker:
+    description: Isolated cloud worker (restricted)
+    default_capabilities:
+      - shell
+      - filesystem
+      - ripgrep
+    heartbeat_interval_seconds: 30
+    stale_threshold_seconds: 90
+
+  friend_laptop:
+    description: Restricted friend device — read-only tools only
+    default_capabilities:
+      - filesystem
+      - ripgrep
+    heartbeat_interval_seconds: 60
+    stale_threshold_seconds: 180
+    restricted: true
+
+pairing:
+  require_approval: true
+  token_ttl_hours: 24
+  max_devices_per_user: 10

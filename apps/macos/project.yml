@@ -1,0 +1,18 @@
+name: NOVAGenie
+options:
+  bundleIdPrefix: com.nova
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  NOVAGenie:
+    type: application
+    platform: macOS
+    sources:
+      - NOVA
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.nova.macos.genie
+      INFOPLIST_FILE: NOVA/Info.plist
+      SWIFT_VERSION: "5.9"
+      LSUIElement: YES
+    info:
+      path: NOVA/Info.plist

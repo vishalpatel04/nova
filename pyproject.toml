@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nova"
+version = "0.1.0"
+description = "NOVA — Personal AI Operating System"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "redis>=5.2.0",
+    "httpx>=0.28.0",
+    "pyyaml>=6.0.2",
+    "structlog>=24.4.0",
+    "python-multipart>=0.0.18",
+    "websockets>=14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "types-pyyaml>=6.0.12",
+    "aiosqlite>=0.20.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nova_core", "apps"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/generate_xcode_projects.py" = ["E501", "F841"]
+"infra/migrations/versions/*.py" = ["E501"]
+"apps/api/routes.py" = ["B008", "SIM105"]
+"apps/worker/main.py" = ["SIM105"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+explicit_package_bases = true
+mypy_path = "."
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["apps.*", "tests.*"]
+disallow_untyped_defs = false

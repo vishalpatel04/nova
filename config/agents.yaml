@@ -1,0 +1,169 @@
+# NOVA Agent Registry — Commanders and functional specialists
+# Every commander includes: id, display_name, role, description, colour_token,
+# icon_token, voice_profile_id, model_tier, status, allowed_tool_categories
+
+commanders:
+  - id: nova
+    display_name: NOVA
+    role: chief_of_staff
+    description: Chief of Staff and primary voice assistant
+    colour_token: nova_blue
+    icon_token: orb
+    voice_profile_id: nova_prime
+    model_tier: flagship
+    status: active
+    allowed_tool_categories:
+      - orchestration
+      - status
+      - delegation
+
+  - id: mars
+    display_name: MARS
+    role: engineering_commander
+    description: Engineering Commander — code, infra, and technical execution
+    colour_token: mars_red
+    icon_token: wrench
+    voice_profile_id: mars_engineer
+    model_tier: flagship
+    status: active
+    allowed_tool_categories:
+      - code
+      - shell
+      - git
+      - filesystem
+
+  - id: mercury
+    display_name: MERCURY
+    role: personal_ops_commander
+    description: Personal Operations Commander — calendar, email, tasks
+    colour_token: mercury_silver
+    icon_token: inbox
+    voice_profile_id: mercury_ops
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - email
+      - calendar
+      - tasks
+
+  - id: jupiter
+    display_name: JUPITER
+    role: research_commander
+    description: Research and Planning Commander — analysis and strategy
+    colour_token: jupiter_amber
+    icon_token: telescope
+    voice_profile_id: jupiter_research
+    model_tier: flagship
+    status: active
+    allowed_tool_categories:
+      - research
+      - web
+      - planning
+
+  - id: venus
+    display_name: VENUS
+    role: creative_commander
+    description: Creative Commander — design, slides, and content
+    colour_token: venus_rose
+    icon_token: palette
+    voice_profile_id: venus_creative
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - design
+      - slides
+      - content
+
+  - id: saturn
+    display_name: SATURN
+    role: memory_commander
+    description: Memory and File Search Commander — archive and retrieval
+    colour_token: saturn_gold
+    icon_token: archive
+    voice_profile_id: saturn_memory
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - search
+      - filesystem
+      - memory
+
+  - id: neptune
+    display_name: NEPTUNE
+    role: safety_commander
+    description: Safety and Final Review Commander — approvals and audit
+    colour_token: neptune_teal
+    icon_token: shield
+    voice_profile_id: neptune_safety
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - review
+      - approval
+      - audit
+
+specialists:
+  - id: backend_engineer
+    display_name: Backend Engineer
+    role: specialist
+    parent_commander: mars
+    description: Implements API and backend services
+    model_tier: flagship
+    status: active
+    allowed_tool_categories:
+      - code
+      - filesystem
+
+  - id: qa_engineer
+    display_name: QA Engineer
+    role: specialist
+    parent_commander: mars
+    description: Runs tests and validates quality
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - code
+      - shell
+
+  - id: code_reviewer
+    display_name: Code Reviewer
+    role: specialist
+    parent_commander: neptune
+    description: Reviews code changes for quality and safety
+    model_tier: flagship
+    status: active
+    allowed_tool_categories:
+      - code
+      - review
+
+  - id: email_assistant
+    display_name: Email Assistant
+    role: specialist
+    parent_commander: mercury
+    description: Drafts and triages email (extension point — no Gmail yet)
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - email
+
+  - id: file_search_worker
+    display_name: File Search Worker
+    role: specialist
+    parent_commander: saturn
+    description: Searches local files via ripgrep and Spotlight
+    model_tier: fast
+    status: active
+    allowed_tool_categories:
+      - search
+      - filesystem
+
+  - id: slide_designer
+    display_name: Slide Designer
+    role: specialist
+    parent_commander: venus
+    description: Creates presentation slides (extension point — no PPT yet)
+    model_tier: standard
+    status: active
+    allowed_tool_categories:
+      - slides
+      - design

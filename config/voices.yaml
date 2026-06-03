@@ -1,0 +1,85 @@
+# Voice profile metadata — TTS/STT provider bindings are extension points
+
+profiles:
+  nova_prime:
+    display_name: NOVA Prime
+    description: Warm, confident chief-of-staff voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 1.0
+    pitch: 1.0
+
+  mars_engineer:
+    display_name: MARS Engineer
+    description: Direct, technical engineering voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 1.05
+    pitch: 0.95
+
+  mercury_ops:
+    display_name: MERCURY Ops
+    description: Efficient operations voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 1.1
+    pitch: 1.0
+
+  jupiter_research:
+    display_name: JUPITER Research
+    description: Thoughtful analytical voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 0.95
+    pitch: 1.0
+
+  venus_creative:
+    display_name: VENUS Creative
+    description: Expressive creative voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 1.0
+    pitch: 1.05
+
+  saturn_memory:
+    display_name: SATURN Memory
+    description: Calm archival retrieval voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 0.9
+    pitch: 0.95
+
+  neptune_safety:
+    display_name: NEPTUNE Safety
+    description: Measured review and safety voice
+    tts_provider: placeholder
+    stt_provider: placeholder
+    language: en-US
+    rate: 0.95
+    pitch: 0.9
+
+modes:
+  prime_only:
+    description: Only NOVA speaks; commanders respond via text
+    active_voice: nova_prime
+
+  war_room:
+    description: All commanders may speak in turn
+    active_voices:
+      - nova_prime
+      - mars_engineer
+      - jupiter_research
+
+  silent_operations:
+    description: Text-only; no TTS output
+    active_voice: null
+
+  briefing:
+    description: NOVA delivers structured briefings
+    active_voice: nova_prime

@@ -1,0 +1,32 @@
+# Model tier definitions — maps tiers to provider/model IDs
+# Secrets (API keys) are NEVER stored here; use environment variables.
+
+tiers:
+  flagship:
+    provider: anthropic
+    model_id: claude-sonnet-4-20250514
+    max_tokens: 8192
+    env_key: ANTHROPIC_API_KEY
+
+  standard:
+    provider: anthropic
+    model_id: claude-3-5-haiku-20241022
+    max_tokens: 4096
+    env_key: ANTHROPIC_API_KEY
+
+  fast:
+    provider: openai
+    model_id: gpt-4o-mini
+    max_tokens: 2048
+    env_key: OPENAI_API_KEY
+
+  local:
+    provider: ollama
+    model_id: llama3.2
+    max_tokens: 4096
+    base_url_env: OLLAMA_BASE_URL
+
+defaults:
+  commander_tier: flagship
+  specialist_tier: standard
+  fallback_tier: fast

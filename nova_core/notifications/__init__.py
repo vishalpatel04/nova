@@ -1,0 +1,1 @@
+"""Notifications — extension point."""

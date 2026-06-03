@@ -1,0 +1,270 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6D00EFAC75A0C3525C2D4069 /* MacDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BD6040EF2942CC13B106CB /* MacDesignTokens.swift */; };
+		0C2E181CE37E9C2AC4DE2ED4 /* MacAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF66E9A939470A5502C2BBAE /* MacAppState.swift */; };
+		9C1F8EABB8B461998AAC8E87 /* NOVAGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79DF89D812C6D4D326EB3174 /* NOVAGenieApp.swift */; };
+		4A8BD705337E242A3DA8611A /* CompactChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45644CBAB1E186BA260516DB /* CompactChatView.swift */; };
+		16E1364AFA211B0F7577538D /* ExpandedChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8860948F9476058EF5DBE50B /* ExpandedChatView.swift */; };
+		0829C8A4E00665D54EEAF3AA /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D76CF90BCD8607256C6529 /* MacAgentsView.swift */; };
+		909E42F57686D5CD0D9E5A20 /* MacDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DC4D52BCCDF7510FD02CB2 /* MacDevicesView.swift */; };
+		D5F269658B4DFF7E211B4248 /* MacMissionRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A338B4E257674EBE250CF0CB /* MacMissionRoomView.swift */; };
+		C86BC167D17D9847877BE6AB /* MacNovaOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0505AF114412872ECFF71C8E /* MacNovaOrbView.swift */; };
+		2BDE48632395952C7A4856C9 /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CA5E2045D2867105718B0F9 /* MacSettingsView.swift */; };
+		005B28844C844621DA26F358 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B952676A174358CCD235CE75 /* MenuBarView.swift */; };
+		5F796340B4DB6A35BD9FADB6 /* VoiceInterfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = C56AE7FC512069D8A758EE2A /* VoiceInterfaces.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		63BD6040EF2942CC13B106CB /* MacDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Design/MacDesignTokens.swift"; sourceTree = "<group>"; };
+		BF66E9A939470A5502C2BBAE /* MacAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/MacAppState.swift"; sourceTree = "<group>"; };
+		79DF89D812C6D4D326EB3174 /* NOVAGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/NOVAGenieApp.swift"; sourceTree = "<group>"; };
+		45644CBAB1E186BA260516DB /* CompactChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/CompactChatView.swift"; sourceTree = "<group>"; };
+		8860948F9476058EF5DBE50B /* ExpandedChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/ExpandedChatView.swift"; sourceTree = "<group>"; };
+		52D76CF90BCD8607256C6529 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MacAgentsView.swift"; sourceTree = "<group>"; };
+		F3DC4D52BCCDF7510FD02CB2 /* MacDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MacDevicesView.swift"; sourceTree = "<group>"; };
+		A338B4E257674EBE250CF0CB /* MacMissionRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MacMissionRoomView.swift"; sourceTree = "<group>"; };
+		0505AF114412872ECFF71C8E /* MacNovaOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MacNovaOrbView.swift"; sourceTree = "<group>"; };
+		1CA5E2045D2867105718B0F9 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MacSettingsView.swift"; sourceTree = "<group>"; };
+		B952676A174358CCD235CE75 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Views/MenuBarView.swift"; sourceTree = "<group>"; };
+		C56AE7FC512069D8A758EE2A /* VoiceInterfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVA/Voice/VoiceInterfaces.swift"; sourceTree = "<group>"; };
+		2EB7B1BD755DF7F2FB5F8392 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		EF0182DF85A7CD0319333F24 /* NOVAGenie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NOVAGenie.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DE1439ACCFCEB73E6F9981A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8C4FDD7B635240BD562EBB49 = {
+			isa = PBXGroup;
+			children = (
+				5C46B32F7557E2A985891B12 /* NOVA */,
+				B23D89B2D2DF3745A003AEB1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5C46B32F7557E2A985891B12 /* NOVA */ = {
+			isa = PBXGroup;
+			children = (
+				63BD6040EF2942CC13B106CB /* MacDesignTokens.swift */,
+				BF66E9A939470A5502C2BBAE /* MacAppState.swift */,
+				79DF89D812C6D4D326EB3174 /* NOVAGenieApp.swift */,
+				45644CBAB1E186BA260516DB /* CompactChatView.swift */,
+				8860948F9476058EF5DBE50B /* ExpandedChatView.swift */,
+				52D76CF90BCD8607256C6529 /* MacAgentsView.swift */,
+				F3DC4D52BCCDF7510FD02CB2 /* MacDevicesView.swift */,
+				A338B4E257674EBE250CF0CB /* MacMissionRoomView.swift */,
+				0505AF114412872ECFF71C8E /* MacNovaOrbView.swift */,
+				1CA5E2045D2867105718B0F9 /* MacSettingsView.swift */,
+				B952676A174358CCD235CE75 /* MenuBarView.swift */,
+				C56AE7FC512069D8A758EE2A /* VoiceInterfaces.swift */,
+				2EB7B1BD755DF7F2FB5F8392 /* Info.plist */,
+			);
+			path = NOVA;
+			sourceTree = "<group>";
+		};
+		B23D89B2D2DF3745A003AEB1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EF0182DF85A7CD0319333F24 /* NOVAGenie.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		42AEFBAE01D2DFD981F7DA7D /* NOVAGenie */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E0A6C122544D4229709A79AD /* Build configuration list for PBXNativeTarget "NOVAGenie" */;
+			buildPhases = (
+				3B7DFB0747829707F437ED7F /* Sources */,
+				DE1439ACCFCEB73E6F9981A5 /* Frameworks */,
+				3519654520012F56AC9A0E86 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NOVAGenie;
+			productName = NOVAGenie;
+			productReference = EF0182DF85A7CD0319333F24 /* NOVAGenie.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = 181FD1D972A55789187B18C1 /* Build configuration list for PBXProject "NOVAGenie" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8C4FDD7B635240BD562EBB49;
+			productRefGroup = B23D89B2D2DF3745A003AEB1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				42AEFBAE01D2DFD981F7DA7D /* NOVAGenie */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3519654520012F56AC9A0E86 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3B7DFB0747829707F437ED7F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6D00EFAC75A0C3525C2D4069 /* MacDesignTokens.swift in Sources */,
+				0C2E181CE37E9C2AC4DE2ED4 /* MacAppState.swift in Sources */,
+				9C1F8EABB8B461998AAC8E87 /* NOVAGenieApp.swift in Sources */,
+				4A8BD705337E242A3DA8611A /* CompactChatView.swift in Sources */,
+				16E1364AFA211B0F7577538D /* ExpandedChatView.swift in Sources */,
+				0829C8A4E00665D54EEAF3AA /* MacAgentsView.swift in Sources */,
+				909E42F57686D5CD0D9E5A20 /* MacDevicesView.swift in Sources */,
+				D5F269658B4DFF7E211B4248 /* MacMissionRoomView.swift in Sources */,
+				C86BC167D17D9847877BE6AB /* MacNovaOrbView.swift in Sources */,
+				2BDE48632395952C7A4856C9 /* MacSettingsView.swift in Sources */,
+				005B28844C844621DA26F358 /* MenuBarView.swift in Sources */,
+				5F796340B4DB6A35BD9FADB6 /* VoiceInterfaces.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		56C0CDEB3087255DFD4BC73D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B4AD41231E3429E0A65A7944 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		9DD3D678E6D5237127FC80FA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NOVA/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nova.macos.genie;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				LSUIElement = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SUPPORTED_PLATFORMS = "macosx";
+				
+			};
+			name = Debug;
+		};
+		2AE38601C6A0C412C0BF21D2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NOVA/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nova.macos.genie;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				LSUIElement = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SUPPORTED_PLATFORMS = "macosx";
+				
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		181FD1D972A55789187B18C1 /* Build configuration list for PBXProject "NOVAGenie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				56C0CDEB3087255DFD4BC73D /* Debug */,
+				B4AD41231E3429E0A65A7944 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E0A6C122544D4229709A79AD /* Build configuration list for PBXNativeTarget "NOVAGenie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9DD3D678E6D5237127FC80FA /* Debug */,
+				2AE38601C6A0C412C0BF21D2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

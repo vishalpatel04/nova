@@ -1,0 +1,41 @@
+# NOVA operational policies
+
+approval:
+  required_categories:
+    - shell
+    - desktop_automation
+    - email_send
+    - git_push
+  auto_approve_categories:
+    - status
+    - search
+    - filesystem_read
+  timeout_hours: 24
+  default_reviewer: neptune
+
+audit:
+  log_all_missions: true
+  log_tool_invocations: true
+  retention_days: 365
+
+rate_limits:
+  missions_per_hour: 100
+  api_requests_per_minute: 300
+
+security:
+  never_store_plaintext_secrets: true
+  require_device_token: false  # Slice 1: dev mode
+  allowed_origins:
+    - http://localhost:*
+    - nova://*
+
+worker:
+  max_concurrent_tools: 3
+  dangerous_tools_disabled:
+    - shell
+    - desktop_automation
+    - applescript
+  reconnect:
+    initial_delay_seconds: 1
+    max_delay_seconds: 60
+    multiplier: 2.0

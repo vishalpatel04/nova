@@ -1,0 +1,1 @@
+"""Validators — extension point."""

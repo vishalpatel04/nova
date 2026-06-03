@@ -1,0 +1,71 @@
+"""Typed application settings loaded from environment and config files."""
+
+from functools import lru_cache
+from pathlib import Path
+
+import yaml
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    nova_env: str = Field(default="development", alias="NOVA_ENV")
+    nova_log_level: str = Field(default="INFO", alias="NOVA_LOG_LEVEL")
+    nova_api_host: str = Field(default="0.0.0.0", alias="NOVA_API_HOST")
+    nova_api_port: int = Field(default=8000, alias="NOVA_API_PORT")
+    database_url: str = Field(
+        default="postgresql+asyncpg://nova:nova@localhost:5432/nova",
+        alias="DATABASE_URL",
+    )
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    nova_config_dir: str = Field(default="config", alias="NOVA_CONFIG_DIR")
+    nova_api_token: str = Field(default="dev-token-change-me", alias="NOVA_API_TOKEN")
+    nova_default_user_id: str = Field(default="arth", alias="NOVA_DEFAULT_USER_ID")
+
+    @property
+    def config_path(self) -> Path:
+        return Path(self.nova_config_dir)
+
+    def load_yaml(self, filename: str) -> dict[str, object]:
+        path = self.config_path / filename
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+        with path.open() as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict in {path}, got {type(data)}")
+        return data
+
+
+class WorkerSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    device_id: str = Field(default="", alias="DEVICE_ID")
+    device_name: str = Field(default="", alias="DEVICE_NAME")
+    device_type: str = Field(default="macos_worker", alias="DEVICE_TYPE")
+    control_plane_url: str = Field(default="http://localhost:8000", alias="CONTROL_PLANE_URL")
+    worker_heartbeat_interval_seconds: int = Field(
+        default=30, alias="WORKER_HEARTBEAT_INTERVAL_SECONDS"
+    )
+    worker_health_port: int = Field(default=9100, alias="WORKER_HEALTH_PORT")
+    nova_api_token: str = Field(default="dev-token-change-me", alias="NOVA_API_TOKEN")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+@lru_cache
+def get_worker_settings() -> WorkerSettings:
+    return WorkerSettings()
