@@ -3,6 +3,25 @@
 import pytest
 from httpx import AsyncClient
 
+from apps.worker.main import WorkerDaemon
+from nova_core.schemas.settings import WorkerSettings
+
+
+def test_generated_worker_device_id_is_stable() -> None:
+    worker = WorkerDaemon(WorkerSettings(DEVICE_ID="", DEVICE_NAME="Test Worker"))
+
+    first = worker.device_id
+    second = worker.device_id
+
+    assert first.startswith("worker-")
+    assert second == first
+
+
+def test_configured_worker_device_id_is_used() -> None:
+    worker = WorkerDaemon(WorkerSettings(DEVICE_ID="configured-worker", DEVICE_NAME="Test Worker"))
+
+    assert worker.device_id == "configured-worker"
+
 
 @pytest.mark.asyncio
 async def test_worker_registration(client: AsyncClient) -> None:

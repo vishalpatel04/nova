@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_readiness_endpoint(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/readiness")
+    response = await client.get("/api/v1/ready")
     assert response.status_code == 200
     data = response.json()
     assert "ready" in data
@@ -15,3 +15,9 @@ async def test_readiness_endpoint(client: AsyncClient) -> None:
 
     db_check = next(c for c in data["checks"] if c["name"] == "database")
     assert db_check["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_legacy_readiness_endpoint(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/readiness")
+    assert response.status_code == 200

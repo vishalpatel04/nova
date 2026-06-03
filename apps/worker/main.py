@@ -23,12 +23,11 @@ class WorkerDaemon:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._reconnect_delay = 1.0
+        self._device_id = settings.device_id or f"worker-{uuid.uuid4().hex[:12]}"
 
     @property
     def device_id(self) -> str:
-        if self.settings.device_id:
-            return self.settings.device_id
-        return f"worker-{uuid.uuid4().hex[:12]}"
+        return self._device_id
 
     @property
     def device_name(self) -> str:

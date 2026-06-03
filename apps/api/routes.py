@@ -49,6 +49,7 @@ async def health() -> HealthResponse:
     )
 
 
+@router.get("/ready", response_model=ReadinessResponse)
 @router.get("/readiness", response_model=ReadinessResponse)
 async def readiness(session: AsyncSession = Depends(get_db_session)) -> ReadinessResponse:
     checks: list[ReadinessCheck] = []
@@ -166,6 +167,7 @@ async def create_mission(
 ) -> MissionResponse:
     settings = _get_settings()
     svc = MissionService(session, settings)
+    svc.set_event_emitter(_publish_mission_event)
     mission = await svc.create_and_run(
         user_id=settings.nova_default_user_id,
         mission_type=body.mission_type,
@@ -306,3 +308,11 @@ def _mission_to_response(mission: Mission) -> MissionResponse:
             for m in mission.agent_messages
         ],
     )
+
+
+async def _publish_mission_event(
+    event_type: str, mission_id: str, payload: dict[str, object] | None
+) -> None:
+    subscribers = list(get_app_state().mission_event_subscribers.get(mission_id, []))
+    for subscriber in subscribers:
+        await subscriber(event_type, mission_id, payload)

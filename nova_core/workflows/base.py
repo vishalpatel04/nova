@@ -114,12 +114,20 @@ class BaseWorkflow(ABC):
                     f"Step '{step_def.name}' failed: {exc}",
                     {"step_id": step.id},
                 )
+                await self._add_timeline(
+                    ctx,
+                    TimelineEventType.MISSION_FAILED,
+                    "nova",
+                    f"Mission '{mission.title}' failed: {exc}",
+                    {"step_id": step.id, "error": str(exc)},
+                )
                 if ctx.emit_event:
                     await ctx.emit_event(
                         "step_failed",
                         mission.id,
                         {"step": step_def.name, "error": str(exc)},
                     )
+                    await ctx.emit_event("mission_failed", mission.id, {"error": str(exc)})
                 raise
 
         mission.status = MissionStatus.COMPLETED.value
