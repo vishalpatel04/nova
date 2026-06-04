@@ -25,6 +25,8 @@
 		56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F86071251C558F09518A2A7F /* KeychainStore.swift */; };
 		67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */; };
 		7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */; };
+		A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */; };
+		27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */; };
 		72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD58ED0B55426D518B017B98 /* CompactChatView.swift */; };
 		87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */; };
 		E24175191E986238B69E408E /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */; };
@@ -32,6 +34,7 @@
 		FCC1B2F76D7DB8CBD923CEA8 /* MacMissionRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */; };
 		3044CD3C339CB0EA897AFF82 /* MacNovaOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA53067F9FE39DAC64E6B91E /* MacNovaOrbView.swift */; };
 		BBE5C59C6474860DCDFDDDDC /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE5B27E33B892B830F7E472 /* MacSettingsView.swift */; };
+		52A1B451E491E55D4B91319D /* MenuBarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */; };
 		CB7540759032FB16FB944CAD /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */; };
 		758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */; };
 		000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */; };
@@ -65,6 +68,8 @@
 		F86071251C558F09518A2A7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/KeychainStore.swift"; sourceTree = "<group>"; };
 		1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/GlobalHotkeyManager.swift"; sourceTree = "<group>"; };
 		05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/LaunchAtLoginHelper.swift"; sourceTree = "<group>"; };
+		02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/MenuBarCoordinator.swift"; sourceTree = "<group>"; };
+		714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/NovaHotkeyTelemetry.swift"; sourceTree = "<group>"; };
 		DD58ED0B55426D518B017B98 /* CompactChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactChatView.swift"; sourceTree = "<group>"; };
 		1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ExpandedChatView.swift"; sourceTree = "<group>"; };
 		BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacAgentsView.swift"; sourceTree = "<group>"; };
@@ -72,6 +77,7 @@
 		6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacMissionRoomView.swift"; sourceTree = "<group>"; };
 		EA53067F9FE39DAC64E6B91E /* MacNovaOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacNovaOrbView.swift"; sourceTree = "<group>"; };
 		BFE5B27E33B892B830F7E472 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacSettingsView.swift"; sourceTree = "<group>"; };
+		D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MenuBarRootView.swift"; sourceTree = "<group>"; };
 		D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MenuBarView.swift"; sourceTree = "<group>"; };
 		71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/NovaOrbStateMachine.swift"; sourceTree = "<group>"; };
 		0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceInterfaces.swift"; sourceTree = "<group>"; };
@@ -122,6 +128,8 @@
 				F86071251C558F09518A2A7F /* KeychainStore.swift */,
 				1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */,
 				05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */,
+				02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */,
+				714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */,
 				DD58ED0B55426D518B017B98 /* CompactChatView.swift */,
 				1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */,
 				BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */,
@@ -129,6 +137,7 @@
 				6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */,
 				EA53067F9FE39DAC64E6B91E /* MacNovaOrbView.swift */,
 				BFE5B27E33B892B830F7E472 /* MacSettingsView.swift */,
+				D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */,
 				D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */,
 				71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */,
 				0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */,
@@ -275,6 +284,8 @@
 				56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */,
 				67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */,
 				7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */,
+				A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */,
+				27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */,
 				72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */,
 				87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */,
 				E24175191E986238B69E408E /* MacAgentsView.swift in Sources */,
@@ -282,6 +293,7 @@
 				FCC1B2F76D7DB8CBD923CEA8 /* MacMissionRoomView.swift in Sources */,
 				3044CD3C339CB0EA897AFF82 /* MacNovaOrbView.swift in Sources */,
 				BBE5C59C6474860DCDFDDDDC /* MacSettingsView.swift in Sources */,
+				52A1B451E491E55D4B91319D /* MenuBarRootView.swift in Sources */,
 				CB7540759032FB16FB944CAD /* MenuBarView.swift in Sources */,
 				758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */,
 				000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */,

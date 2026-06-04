@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Combine
 import AVFoundation
@@ -61,8 +62,17 @@ final class MacAppState: ObservableObject {
     }
 
     func handleHotkeySummon() {
+        NovaHotkeyTelemetry.emit("nova_hotkey_triggered")
+        openCompactChat(listenAfterOpen: true)
+    }
+
+    func openCompactChat(listenAfterOpen: Bool = false) {
         isExpanded = true
-        summonListen = true
+        NSApp.activate(ignoringOtherApps: true)
+        NovaHotkeyTelemetry.emit("nova_compact_chat_opened")
+        if listenAfterOpen {
+            summonListen = true
+        }
     }
 
     func updateBaseURL(_ url: String) {

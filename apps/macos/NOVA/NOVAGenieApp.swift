@@ -7,7 +7,7 @@ struct NOVAGenieApp: App {
 
     var body: some Scene {
         MenuBarExtra("NOVA", systemImage: "circle.hexagongrid.fill") {
-            MenuBarView()
+            MenuBarRootView()
                 .environmentObject(appState)
         }
         .menuBarExtraStyle(.window)

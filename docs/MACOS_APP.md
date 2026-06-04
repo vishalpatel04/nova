@@ -12,7 +12,7 @@ xcodebuild -project NOVAGenie.xcodeproj -scheme NOVAGenie build
 
 - Pairing status polling
 - Mission Room WebSocket stream with reconnect badge
-- Global hotkey **⌥ S** (Carbon, no Accessibility)
+- Global hotkey **⌃⌥ Space** (Carbon, no Accessibility)
 - Launch at login via `SMAppService`
 
 ## Worker always-on

@@ -10,7 +10,7 @@ Clients poll `GET /api/v1/pairing/{pairing_id}/status` with bounded exponential 
 
 ## Global hotkey
 
-Default **⌥ S** via Carbon `RegisterEventHotKey` (no Accessibility permission). Configurable enable toggle in Settings; conflict reported in UI.
+Default **⌃⌥ Space** via Carbon `RegisterEventHotKey` (no Accessibility permission). Configurable enable toggle in Settings; conflict reported in UI. Menu-bar always exposes Open NOVA, Settings, and Quit even if registration fails.
 
 ## Launch at login
 
