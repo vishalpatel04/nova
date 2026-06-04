@@ -8,8 +8,8 @@ final class MacPairingPoller: ObservableObject {
     private let api: NOVAAPIClient
     private var pollTask: Task<Void, Never>?
 
-    init(api: NOVAAPIClient = .shared) {
-        self.api = api
+    init(api: NOVAAPIClient? = nil) {
+        self.api = api ?? .shared
     }
 
     func stop() {

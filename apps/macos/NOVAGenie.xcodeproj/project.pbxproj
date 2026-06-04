@@ -23,11 +23,14 @@
 		9EEB1FECB38EBBE235CDE4CC /* MacPairingPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8125450A8A248E73E1923BB /* MacPairingPoller.swift */; };
 		1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */; };
 		56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F86071251C558F09518A2A7F /* KeychainStore.swift */; };
+		4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */; };
 		67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */; };
 		7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */; };
 		A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */; };
 		27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */; };
 		72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD58ED0B55426D518B017B98 /* CompactChatView.swift */; };
+		718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */; };
+		06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */; };
 		87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */; };
 		E24175191E986238B69E408E /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */; };
 		30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E03F452820A0994B02DB56E /* MacDevicesView.swift */; };
@@ -66,11 +69,14 @@
 		F8125450A8A248E73E1923BB /* MacPairingPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/MacPairingPoller.swift"; sourceTree = "<group>"; };
 		9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/PairingPollStateMachine.swift"; sourceTree = "<group>"; };
 		F86071251C558F09518A2A7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/KeychainStore.swift"; sourceTree = "<group>"; };
+		2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/CompactWindowCoordinator.swift"; sourceTree = "<group>"; };
 		1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/GlobalHotkeyManager.swift"; sourceTree = "<group>"; };
 		05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/LaunchAtLoginHelper.swift"; sourceTree = "<group>"; };
 		02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/MenuBarCoordinator.swift"; sourceTree = "<group>"; };
 		714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/NovaHotkeyTelemetry.swift"; sourceTree = "<group>"; };
 		DD58ED0B55426D518B017B98 /* CompactChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactChatView.swift"; sourceTree = "<group>"; };
+		55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactNOVAWindowRootView.swift"; sourceTree = "<group>"; };
+		AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactPairingView.swift"; sourceTree = "<group>"; };
 		1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ExpandedChatView.swift"; sourceTree = "<group>"; };
 		BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacAgentsView.swift"; sourceTree = "<group>"; };
 		4E03F452820A0994B02DB56E /* MacDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacDevicesView.swift"; sourceTree = "<group>"; };
@@ -126,11 +132,14 @@
 				F8125450A8A248E73E1923BB /* MacPairingPoller.swift */,
 				9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */,
 				F86071251C558F09518A2A7F /* KeychainStore.swift */,
+				2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */,
 				1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */,
 				05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */,
 				02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */,
 				714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */,
 				DD58ED0B55426D518B017B98 /* CompactChatView.swift */,
+				55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */,
+				AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */,
 				1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */,
 				BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */,
 				4E03F452820A0994B02DB56E /* MacDevicesView.swift */,
@@ -282,11 +291,14 @@
 				9EEB1FECB38EBBE235CDE4CC /* MacPairingPoller.swift in Sources */,
 				1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */,
 				56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */,
+				4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */,
 				67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */,
 				7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */,
 				A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */,
 				27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */,
 				72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */,
+				718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */,
+				06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */,
 				87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */,
 				E24175191E986238B69E408E /* MacAgentsView.swift in Sources */,
 				30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */,

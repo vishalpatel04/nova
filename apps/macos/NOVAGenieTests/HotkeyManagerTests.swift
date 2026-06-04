@@ -16,12 +16,10 @@ final class HotkeyManagerTests: XCTestCase {
         NovaHotkeyTelemetry.eventSink = { [weak self] event in
             self?.events.append(event)
         }
-        MenuBarCoordinator.resetForTesting()
     }
 
     override func tearDown() {
         NovaHotkeyTelemetry.eventSink = nil
-        MenuBarCoordinator.resetForTesting()
         super.tearDown()
     }
 
@@ -68,7 +66,7 @@ final class HotkeyManagerTests: XCTestCase {
     }
 
     func testDuplicateRegistrationPrevention() {
-        let manager = GlobalHotkeyManager(userDefaults: defaults)
+        let manager = GlobalHotkeyManager(userDefaults: defaults, forcedRegistrationStatus: noErr)
         manager.isEnabled = false
         manager.applyRegistration()
         XCTAssertEqual(manager.registrationAttemptCount, 0)
@@ -106,7 +104,7 @@ final class HotkeyManagerTests: XCTestCase {
         let manager = GlobalHotkeyManager(userDefaults: defaults)
         manager.isEnabled = true
         let state = testAppState(hotkey: manager)
-        MenuBarCoordinator.initialize(appState: state)
+        state.menuBarCoordinator.initialize(appState: state)
 
         XCTAssertTrue(events.contains("nova_hotkey_register_attempt"))
         XCTAssertTrue(events.contains("nova_menu_bar_ready"))
@@ -131,23 +129,160 @@ final class HotkeyManagerTests: XCTestCase {
         XCTAssertTrue(state.isExpanded)
         XCTAssertTrue(state.summonListen)
         XCTAssertTrue(events.contains("nova_hotkey_triggered"))
-        XCTAssertTrue(events.contains("nova_compact_chat_opened"))
+        XCTAssertTrue(events.contains("nova_compact_chat_created"))
     }
 
     func testMenuBarCoordinatorInitializationOnce() {
         let manager = GlobalHotkeyManager(userDefaults: defaults)
         manager.isEnabled = true
         let state = testAppState(hotkey: manager)
-        MenuBarCoordinator.initialize(appState: state)
-        MenuBarCoordinator.initialize(appState: state)
+        state.menuBarCoordinator.initialize(appState: state)
+        state.menuBarCoordinator.initialize(appState: state)
         XCTAssertEqual(manager.registrationAttemptCount, 1)
     }
 
-    private func testAppState(hotkey: GlobalHotkeyManager? = nil) -> MacAppState {
-        let state = MacAppState()
+    func testStartupRequestsOneCompactWindow() {
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(compactWindowCoordinator: window)
+        state.startApplication()
+
+        XCTAssertEqual(state.menuBarCoordinator.startupWindowRequestCount, 1)
+        XCTAssertEqual(window.openCount, 1)
+        XCTAssertTrue(events.contains("nova_app_started"))
+        XCTAssertTrue(events.contains("nova_initial_window_open_requested"))
+    }
+
+    func testRepeatedOpenRequestsFocusExistingWindow() {
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(compactWindowCoordinator: window)
+
+        state.openCompactChat()
+        state.openCompactChat()
+        state.openCompactChat()
+
+        XCTAssertEqual(window.createCount, 1)
+        XCTAssertEqual(window.openCount, 3)
+        XCTAssertEqual(window.focusCount, 2)
+        XCTAssertTrue(events.contains("nova_compact_chat_focused"))
+    }
+
+    func testNoDuplicateCompactWindows() {
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(compactWindowCoordinator: window)
+
+        state.startApplication()
+        state.openCompactChat()
+        state.handleHotkeySummon()
+
+        XCTAssertEqual(window.createCount, 1)
+    }
+
+    func testMenuBarCoordinatorRetained() {
+        let state = testAppState()
+        state.menuBarCoordinator.initialize(appState: state)
+
+        XCTAssertEqual(state.menuBarCoordinator.readinessCount, 1)
+        XCTAssertEqual(state.menuBarCoordinator.startupWindowRequestCount, 1)
+    }
+
+    func testMenuBarMenuIncludesRequiredCommands() {
+        XCTAssertEqual(MenuBarRootView.commandTitles, ["Open NOVA", "Pair Device", "Settings", "Quit NOVA"])
+    }
+
+    func testUnpairedStateOpensPairingView() {
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(compactWindowCoordinator: window)
+        state.isPaired = false
+
+        state.requestInitialWindowOpen()
+
+        XCTAssertEqual(window.lastMode, .pairing)
+        XCTAssertTrue(state.shouldShowPairing)
+    }
+
+    func testHotkeyRegistrationFailureDoesNotBlockStartupWindow() {
+        let manager = GlobalHotkeyManager(userDefaults: defaults, forcedRegistrationStatus: Int32(eventHotKeyExistsErr))
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(hotkey: manager, compactWindowCoordinator: window)
+
+        state.startApplication()
+
+        XCTAssertEqual(window.openCount, 1)
+        XCTAssertTrue(events.contains("nova_hotkey_registration_failed"))
+        XCTAssertTrue(events.contains("nova_initial_window_open_requested"))
+    }
+
+    func testHotkeyRegistrationFailureDoesNotBlockMenuBarReadiness() {
+        let manager = GlobalHotkeyManager(userDefaults: defaults, forcedRegistrationStatus: Int32(eventHotKeyExistsErr))
+        let state = testAppState(hotkey: manager)
+
+        state.startApplication()
+
+        XCTAssertEqual(state.menuBarCoordinator.readinessCount, 1)
+        XCTAssertTrue(events.contains("nova_menu_bar_ready"))
+        XCTAssertNotNil(manager.registrationError)
+    }
+
+    func testHotkeyTriggerRequestsCompactWindowFocus() {
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(compactWindowCoordinator: window)
+
+        state.openCompactChat()
+        state.handleHotkeySummon()
+
+        XCTAssertEqual(window.focusCount, 1)
+        XCTAssertTrue(state.summonListen)
+        XCTAssertTrue(events.contains("nova_hotkey_triggered"))
+    }
+
+    func testTelemetryCallsOccurForStartupOpenFocusAndFailurePaths() {
+        let manager = GlobalHotkeyManager(userDefaults: defaults, forcedRegistrationStatus: Int32(eventHotKeyExistsErr))
+        let window = FakeCompactWindowCoordinator()
+        let state = testAppState(hotkey: manager, compactWindowCoordinator: window)
+
+        state.startApplication()
+        state.openCompactChat()
+
+        XCTAssertTrue(events.contains("nova_app_started"))
+        XCTAssertTrue(events.contains("nova_menu_bar_ready"))
+        XCTAssertTrue(events.contains("nova_initial_window_open_requested"))
+        XCTAssertTrue(events.contains("nova_compact_chat_created"))
+        XCTAssertTrue(events.contains("nova_compact_chat_focused"))
+        XCTAssertTrue(events.contains("nova_hotkey_register_attempt"))
+        XCTAssertTrue(events.contains("nova_hotkey_registration_failed"))
+    }
+
+    private func testAppState(
+        hotkey: GlobalHotkeyManager? = nil,
+        compactWindowCoordinator: CompactWindowCoordinating? = nil
+    ) -> MacAppState {
+        let state = MacAppState(compactWindowCoordinator: compactWindowCoordinator ?? FakeCompactWindowCoordinator())
         if let hotkey {
             state.hotkey = hotkey
         }
         return state
+    }
+}
+
+@MainActor
+private final class FakeCompactWindowCoordinator: CompactWindowCoordinating {
+    let stableWindowIdentifier = "com.nova.macos.genie.compact.test"
+    private(set) var createCount = 0
+    private(set) var openCount = 0
+    private(set) var focusCount = 0
+    private(set) var lastMode: MacAppState.CompactWindowMode?
+
+    func open(appState: MacAppState, mode: MacAppState.CompactWindowMode) {
+        appState.compactWindowMode = mode
+        lastMode = mode
+        if createCount == 0 {
+            createCount = 1
+            NovaHotkeyTelemetry.emit("nova_compact_chat_created")
+            NovaHotkeyTelemetry.emit("nova_compact_chat_opened")
+        } else {
+            focusCount += 1
+            NovaHotkeyTelemetry.emit("nova_compact_chat_focused")
+        }
+        openCount += 1
     }
 }

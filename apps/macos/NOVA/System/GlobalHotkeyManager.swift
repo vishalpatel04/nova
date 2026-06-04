@@ -33,6 +33,7 @@ final class GlobalHotkeyManager: ObservableObject {
     private var eventHandlerRef: EventHandlerRef?
     private let hotKeyID = EventHotKeyID(signature: OSType(0x4E4F5641), id: 1)
     private let userDefaults: UserDefaults
+    private let forcedRegistrationStatus: OSStatus?
 
     private enum Keys {
         static let enabled = "nova_hotkey_enabled"
@@ -50,8 +51,9 @@ final class GlobalHotkeyManager: ObservableObject {
     static let legacyOptionSpaceKeyCode: UInt32 = UInt32(kVK_Space)
     static let legacyOptionOnlyModifiers: UInt32 = UInt32(optionKey)
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, forcedRegistrationStatus: OSStatus? = nil) {
         self.userDefaults = userDefaults
+        self.forcedRegistrationStatus = forcedRegistrationStatus
         isEnabled = userDefaults.object(forKey: Keys.enabled) as? Bool ?? true
         Self.migrateLegacyShortcutIfNeeded(userDefaults: userDefaults)
         let storedCode = userDefaults.object(forKey: Keys.keyCode) as? UInt32
@@ -95,6 +97,11 @@ final class GlobalHotkeyManager: ObservableObject {
         registrationAttemptCount += 1
         NovaHotkeyTelemetry.emit("nova_hotkey_register_attempt")
 
+        if let forcedRegistrationStatus {
+            applyRegistrationStatus(forcedRegistrationStatus)
+            return
+        }
+
         var status = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, _ -> OSStatus in
@@ -126,6 +133,10 @@ final class GlobalHotkeyManager: ObservableObject {
             return
         }
         status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        applyRegistrationStatus(status)
+    }
+
+    private func applyRegistrationStatus(_ status: OSStatus) {
         if status == noErr {
             registrationError = nil
             isHotkeyRegistered = true

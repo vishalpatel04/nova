@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Menu-bar shell with always-visible commands, independent of hotkey registration.
 struct MenuBarRootView: View {
+    static let commandTitles = ["Open NOVA", "Pair Device", "Settings", "Quit NOVA"]
+
     @EnvironmentObject private var appState: MacAppState
     @Environment(\.openSettings) private var openSettings
 
@@ -10,7 +12,8 @@ struct MenuBarRootView: View {
         VStack(spacing: 0) {
             Group {
                 Button("Open NOVA") { appState.openCompactChat() }
-                Button("Settings...") { openSettings() }
+                Button("Pair Device") { appState.openPairingWindow() }
+                Button("Settings") { openSettings() }
                 Button("Quit NOVA") { NSApplication.shared.terminate(nil) }
             }
             .buttonStyle(.plain)
@@ -22,7 +25,7 @@ struct MenuBarRootView: View {
             MenuBarView()
         }
         .onAppear {
-            MenuBarCoordinator.initialize(appState: appState)
+            appState.menuBarCoordinator.initialize(appState: appState)
         }
     }
 }

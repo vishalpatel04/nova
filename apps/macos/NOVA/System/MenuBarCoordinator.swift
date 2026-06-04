@@ -3,17 +3,24 @@ import SwiftUI
 
 /// Menu-bar startup: register summon hotkey once and emit readiness telemetry.
 @MainActor
-enum MenuBarCoordinator {
-    private static var didInitialize = false
+final class MenuBarCoordinator {
+    private var didInitialize = false
+    private(set) var startupWindowRequestCount = 0
+    private(set) var readinessCount = 0
 
-    static func initialize(appState: MacAppState) {
+    func initialize(appState: MacAppState) {
         guard !didInitialize else { return }
         didInitialize = true
         appState.hotkey.registerAtStartup()
+        readinessCount += 1
         NovaHotkeyTelemetry.emit("nova_menu_bar_ready")
+        startupWindowRequestCount += 1
+        appState.requestInitialWindowOpen()
     }
 
-    static func resetForTesting() {
+    func resetForTesting() {
         didInitialize = false
+        startupWindowRequestCount = 0
+        readinessCount = 0
     }
 }

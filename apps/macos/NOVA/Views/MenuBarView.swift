@@ -7,7 +7,9 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if appState.isExpanded {
+            if appState.shouldShowPairing {
+                CompactPairingView()
+            } else if appState.isExpanded {
                 ExpandedChatView()
             } else {
                 CompactChatView()

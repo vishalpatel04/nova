@@ -32,6 +32,9 @@ struct MacSettingsView: View {
                         .foregroundStyle(.secondary)
                     if let err = appState.hotkey.registrationError {
                         Text(err).font(.caption).foregroundStyle(.orange)
+                        Text("The menu-bar Open NOVA and Pair Device actions still work.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 

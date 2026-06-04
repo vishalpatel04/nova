@@ -6,16 +6,24 @@ import Speech
 
 @MainActor
 final class MacAppState: ObservableObject {
+    enum CompactWindowMode: Equatable {
+        case chat
+        case pairing
+    }
+
     @Published var voiceMode: VoiceMode = .primeOnly
     @Published var isExpanded = false
     @Published var workerHealth: WorkerHealth = .unknown
     @Published var apiBaseURL: String
     @Published var isPaired: Bool
     @Published var globalError: String?
+    @Published var compactWindowMode: CompactWindowMode = .chat
 
     let api = NOVAAPIClient.shared
     @Published var hotkey = GlobalHotkeyManager()
     @Published var summonListen = false
+    let compactWindowCoordinator: CompactWindowCoordinating
+    let menuBarCoordinator: MenuBarCoordinator
 
     enum VoiceMode: String, CaseIterable {
         case primeOnly = "prime_only"
@@ -46,7 +54,16 @@ final class MacAppState: ObservableObject {
         }
     }
 
-    init() {
+    var shouldShowPairing: Bool {
+        compactWindowMode == .pairing || !isPaired
+    }
+
+    init(
+        compactWindowCoordinator: CompactWindowCoordinating? = nil,
+        menuBarCoordinator: MenuBarCoordinator? = nil
+    ) {
+        self.compactWindowCoordinator = compactWindowCoordinator ?? CompactWindowCoordinator()
+        self.menuBarCoordinator = menuBarCoordinator ?? MenuBarCoordinator()
         apiBaseURL = UserDefaults.standard.string(forKey: "api_base_url") ?? "http://localhost:8000"
         isPaired = KeychainStore.load() != nil
         api.baseURL = apiBaseURL
@@ -66,13 +83,30 @@ final class MacAppState: ObservableObject {
         openCompactChat(listenAfterOpen: true)
     }
 
-    func openCompactChat(listenAfterOpen: Bool = false) {
+    func startApplication() {
+        NovaHotkeyTelemetry.emit("nova_app_started")
+        menuBarCoordinator.initialize(appState: self)
+    }
+
+    func requestInitialWindowOpen() {
+        NovaHotkeyTelemetry.emit("nova_initial_window_open_requested")
+        openCompactChat(mode: isPaired ? .chat : .pairing)
+    }
+
+    func openCompactChat(
+        listenAfterOpen: Bool = false,
+        mode: CompactWindowMode? = nil
+    ) {
         isExpanded = true
-        NSApp.activate(ignoringOtherApps: true)
-        NovaHotkeyTelemetry.emit("nova_compact_chat_opened")
+        let targetMode = mode ?? (isPaired ? .chat : .pairing)
+        compactWindowCoordinator.open(appState: self, mode: targetMode)
         if listenAfterOpen {
             summonListen = true
         }
+    }
+
+    func openPairingWindow() {
+        openCompactChat(mode: .pairing)
     }
 
     func updateBaseURL(_ url: String) {
@@ -81,7 +115,12 @@ final class MacAppState: ObservableObject {
         UserDefaults.standard.set(url, forKey: "api_base_url")
     }
 
-    func refreshPairing() { isPaired = KeychainStore.load() != nil }
+    func refreshPairing() {
+        isPaired = KeychainStore.load() != nil
+        if isPaired && compactWindowMode == .pairing {
+            compactWindowMode = .chat
+        }
+    }
 
     func pollWorkerHealth() async {
         guard isPaired else { workerHealth = .unknown; return }
