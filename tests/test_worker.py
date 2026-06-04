@@ -70,6 +70,7 @@ async def test_worker_fetches_ticket_from_pairing_route(monkeypatch) -> None:
             return FakeResponse()
 
     monkeypatch.setattr("apps.worker.ws_client.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("nova_core.auth.keychain.read_generic_password", lambda *_a, **_k: None)
     settings = WorkerSettings(
         CONTROL_PLANE_URL="https://nova.example.test",
         WORKER_TOKEN="nova_wrk_test",

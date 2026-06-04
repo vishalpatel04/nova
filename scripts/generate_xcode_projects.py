@@ -2,17 +2,48 @@
 """Generate minimal but valid Xcode project.pbxproj files for iOS and macOS NOVA apps."""
 
 import hashlib
+import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+_VALID_SWIFT_STEM = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def uid(name: str) -> str:
     return hashlib.md5(name.encode()).hexdigest()[:24].upper()
 
 
+def is_valid_swift_source(path: Path) -> bool:
+    """Reject directories, stray .swift names, and whitespace-only stems."""
+    if not path.is_file():
+        return False
+    if path.suffix != ".swift":
+        return False
+    stem = path.stem
+    if not stem or stem.isspace():
+        return False
+    if stem != path.name.removesuffix(".swift"):
+        return False
+    if any(ord(c) > 127 or c.isspace() for c in stem):
+        return False
+    return bool(_VALID_SWIFT_STEM.match(stem))
+
+
+def pbx_path_literal(rel: Path) -> str:
+    """Quoted PBX path value safe for spaces and special characters."""
+    return json.dumps(rel.as_posix())
+
+
 def collect_swift_files(app_dir: Path) -> list[Path]:
-    return sorted(app_dir.rglob("*.swift"))
+    files = sorted(app_dir.rglob("*.swift"))
+    valid = [f for f in files if is_valid_swift_source(f)]
+    skipped = [f for f in files if f not in valid]
+    if skipped:
+        names = ", ".join(str(s.relative_to(app_dir)) for s in skipped)
+        raise ValueError(f"Invalid Swift source filenames under {app_dir}: {names}")
+    return valid
 
 
 def generate_pbxproj(
@@ -31,10 +62,12 @@ def generate_pbxproj(
 
     for sf in swift_files:
         rel = sf.relative_to(app_dir)
-        ref_id = uid(f"ref-{rel}")
-        build_id = uid(f"build-{rel}")
+        rel_posix = rel.as_posix()
+        path_lit = pbx_path_literal(rel)
+        ref_id = uid(f"ref-{rel_posix}")
+        build_id = uid(f"build-{rel_posix}")
         file_refs.append(
-            f'\t\t{ref_id} /* {sf.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{rel}"; sourceTree = "<group>"; }};'
+            f'\t\t{ref_id} /* {sf.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {path_lit}; sourceTree = "<group>"; }};'
         )
         build_files.append(
             f"\t\t{build_id} /* {sf.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {sf.name} */; }};"
@@ -108,7 +141,7 @@ def generate_pbxproj(
 \t\t{nova_group} /* NOVA */ = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir)}')} /* {sf.name} */," for sf in swift_files)}
+{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir).as_posix()}')} /* {sf.name} */," for sf in swift_files)}
 \t\t\t\t{plist_ref} /* Info.plist */,
 \t\t\t);
 \t\t\tpath = NOVA;
@@ -348,11 +381,12 @@ def inject_unit_test_target(
     build_files = []
     source_lines = []
     for sf in test_files:
-        rel = sf.name
-        ref_id = uid(f"test-ref-{test_target_name}-{rel}")
-        build_id = uid(f"test-build-{test_target_name}-{rel}")
+        rel_name = sf.name
+        path_lit = json.dumps(rel_name)
+        ref_id = uid(f"test-ref-{test_target_name}-{rel_name}")
+        build_id = uid(f"test-build-{test_target_name}-{rel_name}")
         file_refs.append(
-            f'\t\t{ref_id} /* {sf.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{rel}"; sourceTree = "<group>"; }};'
+            f'\t\t{ref_id} /* {rel_name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {path_lit}; sourceTree = "<group>"; }};'
         )
         build_files.append(
             f"\t\t{build_id} /* {sf.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {sf.name} */; }};"
