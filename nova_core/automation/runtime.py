@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
 from nova_core.automation.base import AutomationProviderKind, AutomationResult
 from nova_core.schemas.settings import Settings
 
@@ -33,7 +31,6 @@ class AutomationRequest:
 class AutomationRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.timeout = httpx.Timeout(settings.nova_provider_timeout_seconds)
 
     async def execute(self, request: AutomationRequest) -> AutomationResult:
         if request.dry_run or request.action in SAFE_ACTIONS:
@@ -62,27 +59,20 @@ class AutomationRuntime:
         return AutomationResult(success=False, error="Unsupported automation provider")
 
     async def _execute_n8n(self, request: AutomationRequest) -> AutomationResult:
-        if not self.settings.nova_n8n_base_url:
-            return AutomationResult(success=False, error="n8n is not configured")
-        url = f"{self.settings.nova_n8n_base_url.rstrip('/')}/webhook/{request.action}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=request.payload)
-            resp.raise_for_status()
-            try:
-                output: Any = resp.json()
-            except ValueError:
-                output = {"text": resp.text}
-        return AutomationResult(success=True, output=output, requires_approval=True)
+        _ = request
+        return AutomationResult(
+            success=False,
+            error="Blocked: n8n execution is not enabled in Phase 3B runtime.",
+            requires_approval=True,
+        )
 
     async def _execute_openclaw(self, request: AutomationRequest) -> AutomationResult:
-        if not self.settings.nova_openclaw_base_url:
-            return AutomationResult(success=False, error="OpenClaw is not configured")
-        url = f"{self.settings.nova_openclaw_base_url.rstrip('/')}/actions/{request.action}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=request.payload)
-            resp.raise_for_status()
-            output = resp.json()
-        return AutomationResult(success=True, output=output, requires_approval=True)
+        _ = request
+        return AutomationResult(
+            success=False,
+            error="Blocked: OpenClaw execution is not enabled in Phase 3B runtime.",
+            requires_approval=True,
+        )
 
     async def _execute_shortcuts(self, request: AutomationRequest) -> AutomationResult:
         if not self.settings.nova_shortcuts_enabled:

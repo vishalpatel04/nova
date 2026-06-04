@@ -118,18 +118,80 @@ async def test_automation_dry_run_and_schedule(
 async def test_companion_prompt_creates_session(
     auth_client: AsyncClient, paired_client_token
 ) -> None:
-    _device_id, token = paired_client_token
+    device_id, token = paired_client_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
 
     resp = await auth_client.post(
         "/api/v1/companion/prompts",
-        json={"message": "Run status from phone", "target_device_id": "mac"},
+        json={"message": "Run status from phone", "target_device_id": device_id},
     )
     assert resp.status_code == 202
     body = resp.json()
     assert body["status"] == "queued"
     assert body["session_id"]
     assert body["message_id"]
+
+
+@pytest.mark.asyncio
+async def test_companion_prompt_rejects_unknown_target(
+    auth_client: AsyncClient, paired_client_token
+) -> None:
+    _device_id, token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+
+    resp = await auth_client.post(
+        "/api/v1/companion/prompts",
+        json={"message": "Run status", "target_device_id": "missing-device"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_companion_prompt_requires_target_device_id(
+    auth_client: AsyncClient, paired_client_token
+) -> None:
+    _device_id, token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+
+    resp = await auth_client.post(
+        "/api/v1/companion/prompts",
+        json={"message": "Run status"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_automation_runtime_does_not_execute_n8n_webhook() -> None:
+    from nova_core.automation.base import AutomationProviderKind
+    from nova_core.automation.runtime import AutomationRequest, AutomationRuntime
+    from nova_core.schemas.settings import Settings
+
+    runtime = AutomationRuntime(Settings(nova_n8n_base_url="http://example.invalid/webhook"))
+    result = await runtime.execute(
+        AutomationRequest(
+            provider=AutomationProviderKind.N8N,
+            action="send_email",
+            payload={"to": "x@example.com"},
+            approved=True,
+        )
+    )
+    assert result.success is False
+    assert result.error is not None
+    assert "Phase 3B" in result.error
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_unknown_session_id(
+    auth_client: AsyncClient, paired_client_token
+) -> None:
+    _device_id, token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+
+    resp = await auth_client.post(
+        "/api/v1/chat",
+        json={"message": "help", "session_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio

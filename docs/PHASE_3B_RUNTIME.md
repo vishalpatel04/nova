@@ -28,8 +28,8 @@ The provider runtime supports:
 
 `POST /api/v1/automation/execute` supports n8n, OpenClaw, and Shortcuts boundaries.
 
-Safe inspection and dry-runs can complete without approval. Real execution requires an approved
-approval record. The API never exposes unrestricted shell execution.
+Safe inspection and dry-runs can complete without approval. Real execution remains blocked in
+Phase 3B even when an approval record is supplied; n8n/OpenClaw webhooks are not invoked yet.
 
 `POST /api/v1/automation/schedules` creates paused scheduled tasks. Scheduling is persisted, but
 automatic firing is intentionally not enabled until a scheduler worker approval model is added.

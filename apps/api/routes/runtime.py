@@ -10,7 +10,14 @@ from apps.api.auth import require_roles
 from apps.api.deps import get_db_session
 from apps.api.services.runtime import AutomationService, ChatSessionService
 from nova_core.auth.principal import Principal
-from nova_core.models.orm import AutomationRun, ChatMessageRecord, ChatSession, ScheduledTask
+from nova_core.models.enums import TokenState
+from nova_core.models.orm import (
+    AutomationRun,
+    ChatMessageRecord,
+    ChatSession,
+    Device,
+    ScheduledTask,
+)
 from nova_core.providers.runtime import ProviderRuntime
 from nova_core.schemas.api import (
     AutomationExecuteRequest,
@@ -134,6 +141,26 @@ async def companion_prompt(
     principal: Annotated[Principal, Depends(require_roles("client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> CompanionPromptResponse:
+    if not body.target_device_id:
+        from nova_core.schemas.errors import ValidationError
+
+        raise ValidationError("target_device_id is required for companion prompts")
+
+    target_result = await session.execute(select(Device).where(Device.id == body.target_device_id))
+    target = target_result.scalar_one_or_none()
+    if target is None:
+        from nova_core.schemas.errors import NotFoundError
+
+        raise NotFoundError("Device", body.target_device_id)
+    if target.user_id != principal.user_id:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Target device is not owned by this user")
+    if target.token_state == TokenState.REVOKED.value:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Target device is revoked")
+
     svc = ChatSessionService(session)
     chat_session = await svc.get_or_create(principal, None, title="Companion Prompt")
     message = await svc.append_message(

@@ -46,6 +46,9 @@ class ChatSessionService:
             existing = result.scalar_one_or_none()
             if existing:
                 return existing
+            from nova_core.schemas.errors import NotFoundError
+
+            raise NotFoundError("ChatSession", session_id)
         chat_session = ChatSession(
             user_id=principal.user_id,
             device_id=principal.device_id,
