@@ -41,6 +41,49 @@ async def test_worker_websocket_url_uses_one_time_ticket(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_fetches_ticket_from_pairing_route(monkeypatch) -> None:
+    requested: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, str]:
+            return {"ticket": "ticket-test"}
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout: float) -> None:
+            requested["timeout"] = timeout
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            pass
+
+        async def post(
+            self, url: str, *, headers: dict[str, str], json: dict[str, str]
+        ) -> FakeResponse:
+            requested["url"] = url
+            requested["headers"] = headers
+            requested["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr("apps.worker.ws_client.httpx.AsyncClient", FakeAsyncClient)
+    settings = WorkerSettings(
+        CONTROL_PLANE_URL="https://nova.example.test",
+        WORKER_TOKEN="nova_wrk_test",
+    )
+
+    ticket = await WorkerWebSocketClient(settings, "worker-1", "Worker 1")._fetch_ws_ticket()
+
+    assert ticket == "ticket-test"
+    assert requested["url"] == "https://nova.example.test/api/v1/pairing/ws-tickets"
+    assert requested["headers"] == {"Authorization": "Bearer nova_wrk_test"}
+    assert requested["json"] == {"scope": "worker"}
+
+
+@pytest.mark.asyncio
 async def test_worker_registration(auth_client: AsyncClient, paired_worker_token) -> None:
     device_id, token = paired_worker_token
     auth_client.headers["Authorization"] = f"Bearer {token}"

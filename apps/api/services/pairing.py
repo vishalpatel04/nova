@@ -267,7 +267,7 @@ class PairingService:
         pairing.status = PairingCodeStatus.APPROVED.value
         policy = self._pairing_policy()
         ttl = int(policy.get("delivery_ttl_seconds", 900))
-        await store_delivery_token(self._redis(), pairing.id, token, ttl)
+        await store_delivery_token(self._redis(), pairing.id, token, ttl, self.settings)
 
         await record_audit_event(
             self.session,
@@ -399,7 +399,7 @@ class PairingService:
         if pairing.delivery_consumed_at is not None:
             raise ConflictError("Pairing token already retrieved")
 
-        token = await consume_delivery_token(self._redis(), pairing_id)
+        token = await consume_delivery_token(self._redis(), pairing_id, self.settings)
         if not token:
             raise ValidationError("Pairing delivery expired or unavailable")
 

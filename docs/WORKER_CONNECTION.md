@@ -4,8 +4,8 @@
 
 | Mode | When | Transport |
 |------|------|-----------|
-| WebSocket | `WORKER_TOKEN` set, `WORKER_WS_ENABLED=true` | REST ticket then `WS /api/v1/ws/worker?ticket=...` |
-| REST fallback | Worker token | POST register + heartbeat |
+| WebSocket | Keychain token or `WORKER_TOKEN`, `WORKER_WS_ENABLED=true` | REST ticket then `WS /api/v1/ws/worker?ticket=...` |
+| REST fallback | Keychain token or `WORKER_TOKEN` | POST register + heartbeat |
 
 ## WebSocket messages (worker → API)
 
@@ -74,9 +74,17 @@ curl -X POST http://localhost:8000/api/v1/pairing/codes \
 
 # 2. Claim + approve (see AUTH_AND_PAIRING.md)
 
-# 3. Set WORKER_TOKEN in .env and run
+# 3. Store the worker token in macOS Keychain and run
+security add-generic-password -U \
+  -s com.nova.worker \
+  -a m3-worker \
+  -w "$WORKER_TOKEN"
 make worker
 ```
+
+`DEVICE_ID` selects the Keychain account. If `WORKER_TOKEN_KEYCHAIN_ACCOUNT` is set, it overrides `DEVICE_ID`; otherwise the fallback account is `nova-worker`.
+
+For local development only, `WORKER_TOKEN` in `.env` remains supported. Do not use plaintext `.env` worker tokens for production launchd installs.
 
 ## launchd (Slice 2C)
 

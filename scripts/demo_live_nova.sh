@@ -14,9 +14,13 @@ mask_token() {
 section() { echo ""; echo "==> $1"; echo ""; }
 
 section "1. Docker services"
+if command -v lsof >/dev/null 2>&1 && lsof -iTCP:5432 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port 5432 is already in use. If this is local PostgreSQL, stop it or set DATABASE_URL/compose ports intentionally before running Docker PostgreSQL."
+fi
 make start
 
 section "2. Database migrations"
+echo "Applies Alembic migrations through head before the API accepts real pairing tokens."
 make migrate
 
 section "3. API (run in another terminal: make dev)"
@@ -29,6 +33,9 @@ fi
 
 section "5. Worker pairing code"
 echo 'POST /api/v1/pairing/codes with device_type=macos_worker (Authorization: bootstrap admin)'
+echo 'Claim, approve, then retrieve /api/v1/pairing/{pairing_id}/token exactly once for the worker device_id.'
+echo 'Store production worker tokens in Keychain: security add-generic-password -U -s com.nova.worker -a "$DEVICE_ID" -w "$WORKER_TOKEN"'
+echo 'Local development fallback: WORKER_TOKEN in .env. Do not print or commit it.'
 
 section "6. Install worker launchd agent"
 make install-worker
@@ -59,6 +66,9 @@ echo "Worker reconnects and completes queued command"
 
 section "14. Device revocation"
 echo 'POST /api/v1/devices/{id}/revoke — revoked device cannot retrieve pairing token or connect'
+
+section "15. Cleanup"
+echo "make uninstall-worker && make stop"
 
 section "Done"
 echo "See docs/FIRST_LIVE_DEMO.md for full steps."

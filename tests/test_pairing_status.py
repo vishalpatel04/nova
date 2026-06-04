@@ -3,7 +3,9 @@
 import pytest
 from httpx import AsyncClient
 
-from nova_core.pairing.delivery import clear_local_deliveries_for_tests
+from nova_core.pairing.delivery import clear_local_deliveries_for_tests, store_delivery_token
+from nova_core.schemas.errors import ValidationError
+from nova_core.schemas.settings import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -112,3 +114,10 @@ async def test_pairing_status_rate_limit(auth_client: AsyncClient) -> None:
             assert "rate limit" in resp.json()["error"]["message"].lower()
             return
     pytest.fail("expected status rate limit")
+
+
+@pytest.mark.asyncio
+async def test_local_delivery_fallback_rejected_outside_dev_or_test() -> None:
+    settings = Settings(NOVA_ENV="production", NOVA_TOKEN_PEPPER="prod-pepper")
+    with pytest.raises(ValidationError, match="Redis is required"):
+        await store_delivery_token(None, "pairing-prod", "nova_dev_secret", 60, settings)

@@ -72,8 +72,10 @@ final class GlobalHotkeyManager: ObservableObject {
             registrationError = nil
         } else if status == Int32(eventHotKeyExistsErr) {
             registrationError = "Hotkey already registered by another app"
+            removeEventHandler()
         } else {
             registrationError = "Failed to register hotkey (\(status))"
+            removeEventHandler()
         }
     }
 
@@ -82,6 +84,10 @@ final class GlobalHotkeyManager: ObservableObject {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
+        removeEventHandler()
+    }
+
+    private func removeEventHandler() {
         if let eventHandlerRef {
             RemoveEventHandler(eventHandlerRef)
             self.eventHandlerRef = nil

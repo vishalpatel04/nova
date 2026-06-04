@@ -67,7 +67,19 @@ class WorkerSettings(BaseSettings):
     )
     worker_health_port: int = Field(default=9100, alias="WORKER_HEALTH_PORT")
     worker_token: str = Field(default="", alias="WORKER_TOKEN")
+    worker_token_keychain_service: str = Field(
+        default="com.nova.worker", alias="WORKER_TOKEN_KEYCHAIN_SERVICE"
+    )
+    worker_token_keychain_account: str = Field(default="", alias="WORKER_TOKEN_KEYCHAIN_ACCOUNT")
     worker_ws_enabled: bool = Field(default=True, alias="WORKER_WS_ENABLED")
+
+    @property
+    def resolved_worker_token(self) -> str:
+        from nova_core.auth.keychain import read_generic_password
+
+        account = self.worker_token_keychain_account or self.device_id or "nova-worker"
+        token = read_generic_password(self.worker_token_keychain_service, account)
+        return token or self.worker_token
 
 
 @lru_cache

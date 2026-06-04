@@ -42,7 +42,7 @@ class WorkerDaemon:
 
     async def start(self) -> None:
         self._running = True
-        if self.settings.worker_ws_enabled and self.settings.worker_token:
+        if self.settings.worker_ws_enabled and self.settings.resolved_worker_token:
             self._ws_client = WorkerWebSocketClient(self.settings, self.device_id, self.device_name)
             self._ws_task = asyncio.create_task(self._ws_client.run())
             logger.info("worker_ws_mode", device_id=self.device_id)

@@ -33,11 +33,11 @@ class WorkerWebSocketClient:
         self._handled_commands: set[str] = set()
 
     async def _fetch_ws_ticket(self) -> str:
-        url = f"{self.settings.control_plane_url}/api/v1/ws-tickets"
+        url = f"{self.settings.control_plane_url}/api/v1/pairing/ws-tickets"
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 url,
-                headers={"Authorization": f"Bearer {self.settings.worker_token}"},
+                headers={"Authorization": f"Bearer {self.settings.resolved_worker_token}"},
                 json={"scope": "worker"},
             )
             response.raise_for_status()
