@@ -34,9 +34,24 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
 ```bash
 make bootstrap    # venv, deps, Docker, migrations
 make dev          # start API on :8000
-make worker       # start worker daemon (separate terminal)
+
+# Pair worker (see docs/AUTH_AND_PAIRING.md)
+export NOVA_BOOTSTRAP_ADMIN_ENABLED=true
+bash scripts/generate-bootstrap-token.sh
+
+make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
+
+## Slice 2A — Live backend
+
+Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), worker WebSocket, honest mission queuing.
+
+- [Auth & Pairing](docs/AUTH_AND_PAIRING.md)
+- [Realtime Events](docs/REALTIME_EVENTS.md)
+- [Worker Connection](docs/WORKER_CONNECTION.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Slice 2A Plan](docs/SLICE_2A_BACKEND_LIVE_NERVOUS_SYSTEM_PLAN.md)
 
 ## Stack
 

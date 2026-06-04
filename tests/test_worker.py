@@ -24,11 +24,13 @@ def test_configured_worker_device_id_is_used() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_registration(client: AsyncClient) -> None:
-    response = await client.post(
+async def test_worker_registration(auth_client: AsyncClient, paired_worker_token) -> None:
+    device_id, token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+    response = await auth_client.post(
         "/api/v1/workers/register",
         json={
-            "device_id": "test-worker-001",
+            "device_id": device_id,
             "name": "Test Worker",
             "device_type": "macos_worker",
             "hostname": "test-mac.local",
@@ -38,26 +40,19 @@ async def test_worker_registration(client: AsyncClient) -> None:
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["device_id"] == "test-worker-001"
+    assert data["device_id"] == device_id
     assert data["status"] == "registered"
 
 
 @pytest.mark.asyncio
-async def test_worker_heartbeat(client: AsyncClient) -> None:
-    await client.post(
-        "/api/v1/workers/register",
-        json={
-            "device_id": "test-worker-002",
-            "name": "Heartbeat Worker",
-            "device_type": "macos_worker",
-            "capabilities": ["shell"],
-        },
-    )
+async def test_worker_heartbeat(auth_client: AsyncClient, paired_worker_token) -> None:
+    device_id, token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
 
-    response = await client.post(
+    response = await auth_client.post(
         "/api/v1/workers/heartbeat",
         json={
-            "device_id": "test-worker-002",
+            "device_id": device_id,
             "status": "online",
             "payload": {"cpu": 10, "memory": 50},
         },
@@ -67,8 +62,8 @@ async def test_worker_heartbeat(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_unknown_device(client: AsyncClient) -> None:
-    response = await client.post(
+async def test_heartbeat_unknown_device(auth_client: AsyncClient) -> None:
+    response = await auth_client.post(
         "/api/v1/workers/heartbeat",
         json={"device_id": "nonexistent-device", "status": "online"},
     )
@@ -76,20 +71,22 @@ async def test_heartbeat_unknown_device(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_devices_list(client: AsyncClient) -> None:
-    await client.post(
+async def test_devices_list(auth_client: AsyncClient, paired_worker_token) -> None:
+    device_id, token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+    await auth_client.post(
         "/api/v1/workers/register",
         json={
-            "device_id": "list-test-worker",
+            "device_id": device_id,
             "name": "List Test",
             "device_type": "macos_worker",
             "capabilities": ["git"],
         },
     )
 
-    response = await client.get("/api/v1/devices")
+    response = await auth_client.get("/api/v1/devices")
     assert response.status_code == 200
     devices = response.json()
     assert len(devices) >= 1
-    worker = next(d for d in devices if d["id"] == "list-test-worker")
+    worker = next(d for d in devices if d["id"] == device_id)
     assert "git" in worker["capabilities"]

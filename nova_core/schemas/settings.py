@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     nova_config_dir: str = Field(default="config", alias="NOVA_CONFIG_DIR")
     nova_api_token: str = Field(default="dev-token-change-me", alias="NOVA_API_TOKEN")
     nova_default_user_id: str = Field(default="arth", alias="NOVA_DEFAULT_USER_ID")
+    nova_token_pepper: str = Field(
+        default="dev-pepper-change-in-production", alias="NOVA_TOKEN_PEPPER"
+    )
+    nova_bootstrap_admin_enabled: bool = Field(default=False, alias="NOVA_BOOTSTRAP_ADMIN_ENABLED")
+    nova_bootstrap_admin_token: str = Field(
+        default="nova_bts_dev_bootstrap", alias="NOVA_BOOTSTRAP_ADMIN_TOKEN"
+    )
+    require_device_token: bool = Field(default=True, alias="NOVA_REQUIRE_DEVICE_TOKEN")
 
     @property
     def config_path(self) -> Path:
@@ -58,7 +66,8 @@ class WorkerSettings(BaseSettings):
         default=30, alias="WORKER_HEARTBEAT_INTERVAL_SECONDS"
     )
     worker_health_port: int = Field(default=9100, alias="WORKER_HEALTH_PORT")
-    nova_api_token: str = Field(default="dev-token-change-me", alias="NOVA_API_TOKEN")
+    worker_token: str = Field(default="", alias="WORKER_TOKEN")
+    worker_ws_enabled: bool = Field(default=True, alias="WORKER_WS_ENABLED")
 
 
 @lru_cache

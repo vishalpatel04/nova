@@ -35,9 +35,13 @@ class SystemStatusResponse(BaseModel):
     control_plane: str
     database: str
     redis: str
+    streaming: str
     workers_online: int
     workers_total: int
     workers_stale: int
+    workers_offline: int
+    workers_revoked: int
+    has_eligible_online_worker: bool
     missions_active: int
     timestamp: datetime
 
@@ -49,6 +53,10 @@ class DeviceResponse(BaseModel):
     status: DeviceStatus
     hostname: str | None = None
     os_version: str | None = None
+    architecture: str | None = None
+    privacy_class: str | None = None
+    token_state: str | None = None
+    connection_status: str | None = None
     last_seen_at: datetime | None = None
     capabilities: list[str] = Field(default_factory=list)
 
@@ -88,6 +96,8 @@ class TimelineEventResponse(BaseModel):
     message: str
     payload: dict[str, Any] | None = None
     created_at: datetime
+    sequence_number: int | None = None
+    stream_id: str | None = None
 
 
 class AgentMessageResponse(BaseModel):

@@ -16,11 +16,18 @@ from nova_core.models.orm import (  # noqa: F401 — register models
     AuditEvent,
     Device,
     DeviceCapabilityRecord,
+    DeviceCredential,
     DeviceHeartbeat,
+    DevicePairingCode,
+    DeviceSession,
+    IdempotencyRecord,
     Mission,
+    MissionEventSequence,
     MissionStep,
     ModelUsage,
+    QueuedMission,
     TimelineEvent,
+    TokenRevocation,
     User,
 )
 

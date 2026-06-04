@@ -14,9 +14,10 @@ logger = get_logger("nova.worker.client")
 class ControlPlaneClient:
     def __init__(self, settings: WorkerSettings) -> None:
         self.settings = settings
+        token = settings.worker_token
         self._client = httpx.AsyncClient(
             base_url=settings.control_plane_url,
-            headers={"Authorization": f"Bearer {settings.nova_api_token}"},
+            headers={"Authorization": f"Bearer {token}"} if token else {},
             timeout=30.0,
         )
 

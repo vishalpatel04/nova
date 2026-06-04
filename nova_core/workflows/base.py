@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+import redis.asyncio as aioredis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nova_core.events.publisher import publish_timeline_event
 from nova_core.models.enums import MissionStatus, MissionStepStatus, TimelineEventType
 from nova_core.models.orm import AgentMessage, Mission, MissionStep, TimelineEvent
 from nova_core.schemas.settings import Settings
@@ -21,6 +24,7 @@ class WorkflowContext:
     settings: Settings
     mission: Mission
     emit_event: MissionEventEmitter | None = None
+    redis: aioredis.Redis | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -154,15 +158,19 @@ class BaseWorkflow(ABC):
         message: str,
         payload: dict[str, Any] | None = None,
     ) -> TimelineEvent:
-        event = TimelineEvent(
+        published = await publish_timeline_event(
+            ctx.session,
+            ctx.redis,
             mission_id=ctx.mission.id,
             event_type=event_type.value,
             agent_id=agent_id,
             message=message,
             payload=payload,
         )
-        ctx.session.add(event)
-        await ctx.session.flush()
+        result = await ctx.session.execute(
+            select(TimelineEvent).where(TimelineEvent.id == published.event_id)
+        )
+        event = result.scalar_one()
         return event
 
     async def add_agent_message(

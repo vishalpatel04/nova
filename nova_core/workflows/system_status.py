@@ -30,7 +30,7 @@ class SystemStatusWorkflow(BaseWorkflow):
         ]
 
     async def _query_workers(self, ctx: WorkflowContext) -> dict[str, Any]:
-        availability = await get_worker_availability(ctx.session)
+        availability = await get_worker_availability(ctx.session, ctx.settings)
         ctx.extra["availability"] = availability
 
         await self._add_timeline(

@@ -25,6 +25,8 @@ from nova_core.models.enums import (
     EvidenceBadge,
     MissionStatus,
     MissionStepStatus,
+    PairingCodeStatus,
+    TokenState,
 )
 
 
@@ -57,6 +59,12 @@ class Device(Base):
     status: Mapped[str] = mapped_column(String(32), default=DeviceStatus.REGISTERED.value)
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     os_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    architecture: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    memory_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gpu_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    privacy_class: Mapped[str] = mapped_column(String(32), default="owner")
+    token_state: Mapped[str] = mapped_column(String(32), default=TokenState.ACTIVE.value)
+    connection_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -117,7 +125,6 @@ class Agent(Base):
 
 class Mission(Base):
     __tablename__ = "missions"
-    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_mission_idempotency"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
@@ -184,6 +191,8 @@ class TimelineEvent(Base):
     agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    stream_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     mission: Mapped["Mission | None"] = relationship(back_populates="timeline_events")
@@ -245,3 +254,105 @@ class ModelUsage(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DevicePairingCode(Base):
+    __tablename__ = "device_pairing_codes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(16), nullable=False, unique=True, index=True)
+    device_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    proposed_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    proposed_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default=PairingCodeStatus.PENDING.value)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DeviceCredential(Base):
+    __tablename__ = "device_credentials"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    token_prefix: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    credential_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), default=TokenState.ACTIVE.value)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rotated_from_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeviceSession(Base):
+    __tablename__ = "device_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    credential_id: Mapped[str] = mapped_column(
+        ForeignKey("device_credentials.id"), nullable=False, index=True
+    )
+    connection_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TokenRevocation(Base):
+    __tablename__ = "token_revocations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    credential_id: Mapped[str] = mapped_column(
+        ForeignKey("device_credentials.id"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+    __table_args__ = (
+        UniqueConstraint("principal_id", "scope", "idempotency_key", name="uq_idempotency_scoped"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    principal_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MissionEventSequence(Base):
+    __tablename__ = "mission_event_sequences"
+
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), primary_key=True)
+    last_sequence: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class QueuedMission(Base):
+    __tablename__ = "queued_missions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    mission_id: Mapped[str] = mapped_column(
+        ForeignKey("missions.id"), nullable=False, unique=True, index=True
+    )
+    required_device_types: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    picked_up_by_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

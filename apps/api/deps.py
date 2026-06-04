@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.services.worker_connections import WorkerConnectionManager
 from nova_core.schemas.settings import Settings
 
 MissionEventCallback = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
@@ -16,6 +17,8 @@ class AppState:
     settings: Settings
     redis: aioredis.Redis | None = None
     mission_event_subscribers: dict[str, list[MissionEventCallback]] = field(default_factory=dict)
+    worker_connections: WorkerConnectionManager = field(default_factory=WorkerConnectionManager)
+    streaming_degraded: bool = False
 
 
 _app_state: AppState | None = None
