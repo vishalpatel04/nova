@@ -98,6 +98,22 @@ final class NOVAAPIClient: ObservableObject {
         )
         return try decoder.decode(MacPairingClaim.self, from: data)
     }
+
+    func fetchPairingStatus(pairingId: String) async throws -> MacPairingStatus {
+        let data = try await request(path: "/api/v1/pairing/\(pairingId)/status", requiresAuth: false)
+        return try decoder.decode(MacPairingStatus.self, from: data)
+    }
+
+    func retrievePairingToken(pairingId: String, deviceId: String) async throws -> String {
+        struct Body: Encodable { let deviceId: String }
+        let data = try await request(
+            path: "/api/v1/pairing/\(pairingId)/token",
+            method: "POST",
+            body: Body(deviceId: deviceId),
+            requiresAuth: false
+        )
+        return try decoder.decode(MacPairingTokenResponse.self, from: data).token
+    }
 }
 
 private struct AnyEncodable: Encodable {
@@ -123,4 +139,11 @@ struct MacTimelineEvent: Decodable, Identifiable {
 }
 struct MacTimelineResponse: Decodable { let events: [MacTimelineEvent]; let streaming: String }
 struct MacWSTicket: Decodable { let ticket: String }
-struct MacPairingClaim: Decodable { let status, message: String; let token: String? }
+struct MacPairingClaim: Decodable { let pairingId, status, message: String; let deviceId: String; let token: String? }
+struct MacPairingStatus: Decodable {
+    let pairingId, status, message: String
+    let deviceId: String?
+    let expiresAt: String
+    let tokenReady: Bool
+}
+struct MacPairingTokenResponse: Decodable { let deviceId, token, status: String }

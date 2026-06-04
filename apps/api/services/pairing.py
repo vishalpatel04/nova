@@ -25,6 +25,7 @@ from nova_core.models.orm import (
     User,
     WebSocketTicket,
 )
+from nova_core.pairing.delivery import consume_delivery_token, store_delivery_token
 from nova_core.schemas.errors import (
     ConflictError,
     NotFoundError,
@@ -58,6 +59,8 @@ class PairingRateLimiter:
 
 
 _pairing_limiter = PairingRateLimiter()
+_status_limiter = PairingRateLimiter()
+_retrieval_limiter = PairingRateLimiter()
 
 
 class RedisPairingRateLimiter:
@@ -183,6 +186,12 @@ class PairingService:
         if pairing.status == PairingCodeStatus.CLAIMED.value:
             raise ConflictError("Pairing code already claimed")
 
+        if pairing.status == PairingCodeStatus.APPROVED.value:
+            raise ConflictError("Pairing code already approved")
+
+        if pairing.proposed_device_id and pairing.proposed_device_id != device_id:
+            raise ConflictError("Pairing code already claimed by another device")
+
         if pairing.status == PairingCodeStatus.REJECTED.value:
             raise ValidationError("Pairing code was rejected")
 
@@ -212,7 +221,15 @@ class PairingService:
         await self.session.commit()
         return pairing, token
 
-    async def approve_pairing(self, pairing_id: str, approver: Principal) -> tuple[str, str]:
+    def _redis(self) -> Any | None:
+        try:
+            from apps.api.deps import get_app_state
+
+            return get_app_state().redis
+        except Exception:
+            return None
+
+    async def approve_pairing(self, pairing_id: str, approver: Principal) -> tuple[str, str | None]:
         result = await self.session.execute(
             select(DevicePairingCode).where(DevicePairingCode.id == pairing_id)
         )
@@ -245,8 +262,12 @@ class PairingService:
             None,
             None,
             credential_type=cred_type,
+            mark_claimed=False,
         )
-        pairing.status = PairingCodeStatus.CLAIMED.value
+        pairing.status = PairingCodeStatus.APPROVED.value
+        policy = self._pairing_policy()
+        ttl = int(policy.get("delivery_ttl_seconds", 900))
+        await store_delivery_token(self._redis(), pairing.id, token, ttl)
 
         await record_audit_event(
             self.session,
@@ -255,9 +276,145 @@ class PairingService:
             action="pairing.approved",
             resource_type="pairing_code",
             resource_id=pairing.id,
+            details={"delivery": "pending_client_retrieval"},
         )
         await self.session.commit()
-        return pairing.proposed_device_id, token
+        return pairing.proposed_device_id, None
+
+    async def reject_pairing(
+        self, pairing_id: str, approver: Principal, reason: str | None
+    ) -> None:
+        result = await self.session.execute(
+            select(DevicePairingCode).where(DevicePairingCode.id == pairing_id)
+        )
+        pairing = result.scalar_one_or_none()
+        if not pairing:
+            raise NotFoundError("PairingCode", pairing_id)
+        if pairing.status in (
+            PairingCodeStatus.CLAIMED.value,
+            PairingCodeStatus.REJECTED.value,
+        ):
+            raise ConflictError("Pairing cannot be rejected")
+        pairing.status = PairingCodeStatus.REJECTED.value
+        pairing.rejected_at = utc_now()
+        await record_audit_event(
+            self.session,
+            actor_type=approver.principal_type,
+            actor_id=approver.principal_id,
+            action="pairing.rejected",
+            resource_type="pairing_code",
+            resource_id=pairing.id,
+            details={"reason": reason},
+        )
+        await self.session.commit()
+
+    async def get_pairing_status(self, pairing_id: str, client_ip: str | None) -> dict[str, Any]:
+        policy = self._pairing_policy()
+        polls_per_minute = int(policy.get("status_polls_per_minute", 30))
+        _status_limiter.check(f"status:{pairing_id}", polls_per_minute, 60)
+        if client_ip:
+            _status_limiter.check(f"status-ip:{client_ip}", polls_per_minute * 2, 60)
+
+        result = await self.session.execute(
+            select(DevicePairingCode).where(DevicePairingCode.id == pairing_id)
+        )
+        pairing = result.scalar_one_or_none()
+        if not pairing:
+            raise NotFoundError("PairingCode", pairing_id)
+
+        status = pairing.status
+        if ensure_utc(pairing.expires_at) < utc_now() and status not in (
+            PairingCodeStatus.CLAIMED.value,
+            PairingCodeStatus.REJECTED.value,
+        ):
+            pairing.status = PairingCodeStatus.EXPIRED.value
+            status = pairing.status
+            await self.session.commit()
+
+        token_ready = (
+            status == PairingCodeStatus.APPROVED.value and pairing.delivery_consumed_at is None
+        )
+        return {
+            "pairing_id": pairing.id,
+            "status": status,
+            "device_id": pairing.proposed_device_id,
+            "expires_at": pairing.expires_at.isoformat(),
+            "token_ready": token_ready,
+            "message": self._status_message(status, token_ready),
+        }
+
+    def _status_message(self, status: str, token_ready: bool) -> str:
+        if status == PairingCodeStatus.PENDING.value:
+            return "Awaiting operator approval"
+        if status == PairingCodeStatus.APPROVED.value and token_ready:
+            return "Approved — retrieve device token"
+        if status == PairingCodeStatus.APPROVED.value:
+            return "Approved — token already retrieved"
+        if status == PairingCodeStatus.CLAIMED.value:
+            return "Pairing complete"
+        if status == PairingCodeStatus.EXPIRED.value:
+            return "Pairing code expired"
+        if status == PairingCodeStatus.REJECTED.value:
+            return "Pairing rejected by operator"
+        return status
+
+    async def retrieve_pairing_token(
+        self,
+        pairing_id: str,
+        device_id: str,
+        client_ip: str | None,
+    ) -> str:
+        policy = self._pairing_policy()
+        max_retrievals = int(policy.get("token_retrievals_per_hour", 20))
+        window = int(policy.get("attempt_window_seconds", 3600))
+        limiter = RedisPairingRateLimiter(self._redis())
+        await limiter.check(f"retrieve:{pairing_id}", max_retrievals, window)
+        if client_ip:
+            await limiter.check(f"retrieve-ip:{client_ip}", max_retrievals, window)
+
+        result = await self.session.execute(
+            select(DevicePairingCode).where(DevicePairingCode.id == pairing_id)
+        )
+        pairing = result.scalar_one_or_none()
+        if not pairing:
+            raise NotFoundError("PairingCode", pairing_id)
+
+        if ensure_utc(pairing.expires_at) < utc_now():
+            pairing.status = PairingCodeStatus.EXPIRED.value
+            await self.session.commit()
+            raise ValidationError("Pairing code expired")
+
+        if pairing.status == PairingCodeStatus.REJECTED.value:
+            raise ValidationError("Pairing was rejected")
+
+        if pairing.status == PairingCodeStatus.CLAIMED.value:
+            raise ConflictError("Pairing token already retrieved")
+
+        if pairing.status != PairingCodeStatus.APPROVED.value:
+            raise ValidationError("Pairing not approved yet")
+
+        if pairing.proposed_device_id != device_id:
+            raise UnauthorizedError("Device ID does not match pairing claim")
+
+        if pairing.delivery_consumed_at is not None:
+            raise ConflictError("Pairing token already retrieved")
+
+        token = await consume_delivery_token(self._redis(), pairing_id)
+        if not token:
+            raise ValidationError("Pairing delivery expired or unavailable")
+
+        pairing.delivery_consumed_at = utc_now()
+        pairing.status = PairingCodeStatus.CLAIMED.value
+        await record_audit_event(
+            self.session,
+            actor_type="device",
+            actor_id=device_id,
+            action="pairing.token_retrieved",
+            resource_type="pairing_code",
+            resource_id=pairing.id,
+        )
+        await self.session.commit()
+        return token
 
     async def _finalize_pairing(
         self,
@@ -270,6 +427,8 @@ class PairingService:
         architecture: str | None,
         metadata: dict[str, Any] | None,
         credential_type: str | None = None,
+        *,
+        mark_claimed: bool = True,
     ) -> str:
         user_result = await self.session.execute(select(User).where(User.id == pairing.user_id))
         user = user_result.scalar_one_or_none()
@@ -311,7 +470,8 @@ class PairingService:
 
         cred_type = credential_type or ("worker" if "worker" in device_type else "client")
         token, _cred = await self._issue_credential(device_id, cred_type)
-        pairing.status = PairingCodeStatus.CLAIMED.value
+        if mark_claimed:
+            pairing.status = PairingCodeStatus.CLAIMED.value
         return token
 
     async def _issue_credential(

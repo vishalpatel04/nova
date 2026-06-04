@@ -43,6 +43,17 @@ make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
 
+## Slice 2C — Native hardening
+
+Automatic pairing polling, macOS Mission Room WebSocket, **⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
+
+```bash
+bash scripts/demo_live_nova.sh
+make install-worker
+python3 scripts/generate_xcode_projects.py
+xcodebuild test  # per docs/IOS_APP.md and docs/MACOS_APP.md
+```
+
 ## Slice 2B — Native live clients
 
 iPhone and macOS apps pair via the API, store tokens in Keychain, stream mission timelines over WebSocket tickets, and support tap-to-talk voice missions. See [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md).
@@ -68,6 +79,11 @@ Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), work
 - [Auth & Pairing](docs/AUTH_AND_PAIRING.md)
 - [Realtime Events](docs/REALTIME_EVENTS.md)
 - [Worker Connection](docs/WORKER_CONNECTION.md)
+- [Native Client Slice 2C](docs/NATIVE_CLIENT_SLICE_2C.md)
+- [First Live Demo](docs/FIRST_LIVE_DEMO.md)
+- [iOS App](docs/IOS_APP.md)
+- [macOS App](docs/MACOS_APP.md)
+- [Action Button](docs/ACTION_BUTTON.md)
 - [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Slice 2A Plan](docs/SLICE_2A_BACKEND_LIVE_NERVOUS_SYSTEM_PLAN.md)

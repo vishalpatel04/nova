@@ -5,6 +5,10 @@ pairing:
   code_ttl_minutes: 15
   token_ttl_days: 90
   max_attempts_per_hour: 10
+  attempt_window_seconds: 3600
+  status_polls_per_minute: 30
+  token_retrievals_per_hour: 20
+  delivery_ttl_seconds: 900
   max_devices_per_user: 10
   trusted_device_classes:
     - macos_worker
@@ -37,6 +41,9 @@ rate_limits:
   missions_per_hour: 100
   api_requests_per_minute: 300
   pairing_attempts_per_hour: 10
+  pairing_status_polls_per_minute: 30
+  pairing_token_retrievals_per_hour: 20
+  pairing_delivery_ttl_seconds: 900
 
 security:
   never_store_plaintext_secrets: true

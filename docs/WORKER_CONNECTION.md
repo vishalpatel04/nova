@@ -78,8 +78,15 @@ curl -X POST http://localhost:8000/api/v1/pairing/codes \
 make worker
 ```
 
-## launchd
+## launchd (Slice 2C)
 
 ```bash
-bash scripts/worker/install.sh
+make install-worker
+make worker-status
+make worker-restart
+make uninstall-worker
 ```
+
+Logs: `~/Library/Logs/nova/`. See [FIRST_LIVE_DEMO.md](FIRST_LIVE_DEMO.md).
+
+Legacy script (if present): `bash scripts/worker/install.sh`

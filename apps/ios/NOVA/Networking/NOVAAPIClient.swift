@@ -147,6 +147,25 @@ final class NOVAAPIClient: ObservableObject {
         )
         return try decoder.decode(PairingClaimResponse.self, from: data)
     }
+
+    func fetchPairingStatus(pairingId: String) async throws -> PairingStatusResponse {
+        let (data, _) = try await request(
+            path: "/api/v1/pairing/\(pairingId)/status",
+            requiresAuth: false
+        )
+        return try decoder.decode(PairingStatusResponse.self, from: data)
+    }
+
+    func retrievePairingToken(pairingId: String, deviceId: String) async throws -> String {
+        struct Body: Encodable { let deviceId: String }
+        let (data, _) = try await request(
+            path: "/api/v1/pairing/\(pairingId)/token",
+            method: "POST",
+            body: Body(deviceId: deviceId),
+            requiresAuth: false
+        )
+        return try decoder.decode(PairingTokenResponse.self, from: data).token
+    }
 }
 
 private struct AnyEncodable: Encodable {
@@ -202,4 +221,19 @@ struct PairingClaimResponse: Decodable {
     let deviceId: String
     let token: String?
     let message: String
+}
+
+struct PairingStatusResponse: Decodable {
+    let pairingId: String
+    let status: String
+    let deviceId: String?
+    let expiresAt: String
+    let tokenReady: Bool
+    let message: String
+}
+
+struct PairingTokenResponse: Decodable {
+    let deviceId: String
+    let token: String
+    let status: String
 }

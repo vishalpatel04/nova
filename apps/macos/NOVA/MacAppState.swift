@@ -13,6 +13,8 @@ final class MacAppState: ObservableObject {
     @Published var globalError: String?
 
     let api = NOVAAPIClient.shared
+    @Published var hotkey = GlobalHotkeyManager()
+    @Published var summonListen = false
 
     enum VoiceMode: String, CaseIterable {
         case primeOnly = "prime_only"
@@ -47,6 +49,20 @@ final class MacAppState: ObservableObject {
         apiBaseURL = UserDefaults.standard.string(forKey: "api_base_url") ?? "http://localhost:8000"
         isPaired = KeychainStore.load() != nil
         api.baseURL = apiBaseURL
+        NotificationCenter.default.addObserver(
+            forName: .novaHotkeySummon,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleHotkeySummon()
+            }
+        }
+    }
+
+    func handleHotkeySummon() {
+        isExpanded = true
+        summonListen = true
     }
 
     func updateBaseURL(_ url: String) {

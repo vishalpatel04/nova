@@ -78,12 +78,18 @@ async def test_pairing_claim_and_approve(auth_client: AsyncClient) -> None:
         },
     )
     assert claim.status_code == 200
-    assert claim.json()["status"] == "pending_approval"
+    assert claim.json()["status"] == "pending"
 
     approve = await auth_client.post(f"/api/v1/pairing/{pairing_id}/approve")
     assert approve.status_code == 200
-    assert "token" in approve.json()
-    assert approve.json()["token"].startswith("nova_")
+    assert "token" not in approve.json()
+
+    retrieve = await auth_client.post(
+        f"/api/v1/pairing/{pairing_id}/token",
+        json={"device_id": "iphone-1"},
+    )
+    assert retrieve.status_code == 200
+    assert retrieve.json()["token"].startswith("nova_")
 
 
 @pytest.mark.asyncio

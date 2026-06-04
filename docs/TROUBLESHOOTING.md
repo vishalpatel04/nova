@@ -11,6 +11,16 @@ Bearer tokens are accepted on REST endpoints only. WebSocket URLs must use one-t
 
 Pairing attempts are limited per source IP and per code. Wait for the TTL window or use a new code. In local development/test, Redis outage falls back to an in-process limiter and logs `pairing_rate_limit_degraded_local`.
 
+## Client pairing stuck on “waiting”
+
+- Confirm operator called `POST /api/v1/pairing/{id}/approve`
+- Poll `GET /api/v1/pairing/{id}/status` — when `token_ready` is true, client calls `POST /api/v1/pairing/{id}/token` once
+- Expired or rejected pairings require a new code
+
+## macOS hotkey conflict
+
+If **⌥ Space** does not summon NOVA, another app may own the combination. Disable hotkey in NOVA Settings or change modifiers (future slice).
+
 ## Redis unavailable
 
 Mission timelines remain durable in PostgreSQL. APIs report `streaming: degraded`, and WebSocket replay falls back to PostgreSQL history.

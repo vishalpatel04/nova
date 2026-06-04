@@ -48,8 +48,31 @@ class PairingClaimResponse(BaseModel):
 
 class PairingApproveResponse(BaseModel):
     device_id: str
+    status: str = "approved"
+    message: str = "Device approved — client may retrieve token via pairing status"
+
+
+class PairingStatusResponse(BaseModel):
+    pairing_id: str
+    status: str
+    device_id: str | None = None
+    expires_at: str
+    token_ready: bool
+    message: str
+
+
+class PairingTokenRetrieveRequest(BaseModel):
+    device_id: str
+
+
+class PairingTokenRetrieveResponse(BaseModel):
+    device_id: str
     token: str
     status: str = "claimed"
+
+
+class PairingRejectRequest(BaseModel):
+    reason: str | None = None
 
 
 class TokenRotateResponse(BaseModel):
@@ -125,10 +148,58 @@ async def claim_pairing_code(
         )
     return PairingClaimResponse(
         pairing_id=pairing.id,
-        status="pending_approval",
+        status="pending",
         device_id=body.device_id,
         message="Pairing claim submitted — awaiting approval",
     )
+
+
+@router.get("/{pairing_id}/status", response_model=PairingStatusResponse)
+async def get_pairing_status(
+    pairing_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> PairingStatusResponse:
+    settings = get_settings()
+    svc = PairingService(session, settings)
+    data = await svc.get_pairing_status(
+        pairing_id, client_ip=request.client.host if request.client else None
+    )
+    return PairingStatusResponse(**data)
+
+
+@router.post("/{pairing_id}/token", response_model=PairingTokenRetrieveResponse)
+async def retrieve_pairing_token(
+    pairing_id: str,
+    body: PairingTokenRetrieveRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> PairingTokenRetrieveResponse:
+    settings = get_settings()
+    svc = PairingService(session, settings)
+    token = await svc.retrieve_pairing_token(
+        pairing_id,
+        body.device_id,
+        client_ip=request.client.host if request.client else None,
+    )
+    return PairingTokenRetrieveResponse(device_id=body.device_id, token=token)
+
+
+@router.post("/{pairing_id}/reject")
+async def reject_pairing(
+    pairing_id: str,
+    body: PairingRejectRequest,
+    principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    if principal.token_role != "admin":
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Admin credential required")
+    settings = get_settings()
+    svc = PairingService(session, settings)
+    await svc.reject_pairing(pairing_id, principal, body.reason)
+    return {"status": "rejected", "pairing_id": pairing_id}
 
 
 @router.post("/{pairing_id}/approve", response_model=PairingApproveResponse)
@@ -143,8 +214,8 @@ async def approve_pairing(
         raise UnauthorizedError("Admin credential required")
     settings = get_settings()
     svc = PairingService(session, settings)
-    device_id, token = await svc.approve_pairing(pairing_id, principal)
-    return PairingApproveResponse(device_id=device_id, token=token)
+    device_id, _token = await svc.approve_pairing(pairing_id, principal)
+    return PairingApproveResponse(device_id=device_id)
 
 
 @router.post("/ws-tickets", response_model=WebSocketTicketResponse, tags=["realtime"])

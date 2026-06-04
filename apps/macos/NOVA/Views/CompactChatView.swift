@@ -40,6 +40,12 @@ struct CompactChatView: View {
             .padding(.bottom, 8)
         }
         .task { await appState.pollWorkerHealth() }
+        .onChange(of: appState.summonListen) { _, listen in
+            if listen {
+                appState.summonListen = false
+                Task { await toggleVoice() }
+            }
+        }
     }
 
     private func toggleVoice() async {

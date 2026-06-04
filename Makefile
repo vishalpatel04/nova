@@ -48,6 +48,18 @@ worker:
 backup:
 	@bash scripts/backup.sh
 
+install-worker:
+	@bash scripts/install-worker-launchd.sh
+
+uninstall-worker:
+	@bash scripts/uninstall-worker-launchd.sh
+
+worker-status:
+	@bash scripts/worker-launchd-status.sh
+
+worker-restart:
+	@bash scripts/worker-launchd-restart.sh
+
 install:
 	$(PIP) install -e ".[dev]"
 
