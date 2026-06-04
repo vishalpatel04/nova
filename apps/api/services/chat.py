@@ -84,6 +84,13 @@ class ChatService:
 
         if handler:
             body = await handler(principal, args)
+            if body == BLOCKED_MESSAGE:
+                return self._response(
+                    body,
+                    intent="blocked",
+                    routing=routing,
+                    blocked=True,
+                )
             await self._maybe_audit_command(principal, intent, args, body)
             return self._response(body, intent=intent, routing=routing)
 
@@ -210,6 +217,9 @@ class ChatService:
             return BLOCKED_MESSAGE
         result = self._safe_tools.list_directory(args.get("path", "."))
         if not result.success:
+            if self._is_safe_tool_policy_error(result.error):
+                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
+                return BLOCKED_MESSAGE
             return f"Error: {result.error}"
         output = result.output
         assert isinstance(output, dict)
@@ -224,6 +234,9 @@ class ChatService:
             return BLOCKED_MESSAGE
         result = self._safe_tools.read_file(args.get("path", ""))
         if not result.success:
+            if self._is_safe_tool_policy_error(result.error):
+                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
+                return BLOCKED_MESSAGE
             return f"Error: {result.error}"
         output = result.output
         assert isinstance(output, dict)
@@ -241,6 +254,13 @@ class ChatService:
             args.get("path", "."),
         )
         if not result.success:
+            if self._is_safe_tool_policy_error(result.error):
+                await self._audit_blocked(
+                    principal,
+                    f"{args.get('pattern', '')} {args.get('path', '')}".strip(),
+                    reason="safe_path_block",
+                )
+                return BLOCKED_MESSAGE
             return f"Error: {result.error}"
         output = result.output
         assert isinstance(output, dict)
@@ -250,6 +270,11 @@ class ChatService:
         lines = [f"{m.get('path')}:{m.get('line')}: {m.get('text')}" for m in matches[:10]]
         suffix = " (truncated)" if output.get("truncated") else ""
         return f"Matches{suffix}:\n" + "\n".join(lines)
+
+    def _is_safe_tool_policy_error(self, error: str | None) -> bool:
+        if not error:
+            return False
+        return error.startswith(("Blocked path segment:", "Path not in allowlist:"))
 
     async def _audit_blocked(self, principal: Principal, message: str, *, reason: str) -> None:
         await record_audit_event(

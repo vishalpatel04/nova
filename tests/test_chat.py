@@ -65,6 +65,33 @@ async def test_chat_blocks_unsafe_request(
 
 
 @pytest.mark.asyncio
+async def test_chat_blocks_secret_read_path(
+    auth_client: AsyncClient, paired_client_token, db_session: AsyncSession
+) -> None:
+    from sqlalchemy import select
+
+    from nova_core.models.orm import AuditEvent
+
+    _device_id, token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+    resp = await auth_client.post(
+        "/api/v1/chat", json={"message": "read file ~/Projects/nova/.env"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["blocked"] is True
+    assert data["intent"] == "blocked"
+    assert "Blocked:" in data["response"]
+
+    result = await db_session.execute(
+        select(AuditEvent)
+        .where(AuditEvent.action == "chat.action_blocked")
+        .where(AuditEvent.details["reason"].as_string() == "safe_path_block")
+    )
+    assert result.scalars().first() is not None
+
+
+@pytest.mark.asyncio
 async def test_chat_routing_prefers_rule_based(
     auth_client: AsyncClient, paired_client_token
 ) -> None:
