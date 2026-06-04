@@ -10,13 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
+from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
 from nova_core.auth.principal import Principal
 from nova_core.devices.availability import get_worker_availability
 from nova_core.models.enums import MissionStatus
 from nova_core.models.orm import Mission
 from nova_core.providers.router import ProviderConfig, ProviderRouter
+from nova_core.providers.runtime import InferenceRequest, ProviderRuntime, token_usage_dict
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
+from nova_core.tools.code_runtime import CodeRuntime
 from nova_core.tools.policy import BLOCKED_MESSAGE, ToolDecision, ToolPolicy
 from nova_core.tools.safe_readonly import SafeReadonlyTools
 
@@ -44,31 +47,54 @@ class ChatService:
         safe_cfg = self._policies.get("safe_filesystem", {})
         roots = safe_cfg.get("allowed_roots") if isinstance(safe_cfg, dict) else None
         self._safe_tools = SafeReadonlyTools(allowed_roots=roots)
+        self._code_runtime = CodeRuntime(allowed_roots=roots)
         self._router = ProviderRouter(ProviderConfig())
+        self._provider_runtime = ProviderRuntime(settings)
 
     async def handle_message(
         self,
         *,
         message: str,
         principal: Principal,
+        session_id: str | None = None,
+        stream: bool = False,
     ) -> dict[str, Any]:
         text = message.strip()
         if not text:
             return self._response("Please enter a message.", intent="empty")
 
+        sessions = ChatSessionService(self.session)
+        chat_session = await sessions.get_or_create(principal, session_id, title=self._title(text))
+        await sessions.append_message(chat_session, role="user", content=text)
+
         if self._policy.is_unsafe_request_text(text):
             await self._audit_blocked(principal, text, reason="unsafe_keyword")
-            return self._blocked_response()
+            response = self._blocked_response(session_id=chat_session.id)
+            await sessions.append_message(
+                chat_session,
+                role="assistant",
+                content=response["response"],
+                intent="blocked",
+                blocked=True,
+            )
+            await self.session.commit()
+            return response
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
 
         if intent == "help":
-            return self._response(HELP_TEXT, intent=intent, routing=routing)
+            response = self._response(
+                HELP_TEXT, intent=intent, routing=routing, session_id=chat_session.id
+            )
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
 
         if intent == "blocked":
             await self._audit_blocked(principal, text, reason="blocked_intent")
-            return self._blocked_response()
+            response = self._blocked_response(session_id=chat_session.id)
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
 
         handler = {
             "system_status": self._system_status,
@@ -80,22 +106,47 @@ class ChatService:
             "list_directory": self._list_directory,
             "read_file": self._read_file,
             "ripgrep_search": self._ripgrep_search,
+            "repo_analysis": self._repo_analysis,
+            "explain_code": self._explain_code,
+            "patch_plan": self._patch_plan,
         }.get(intent)
 
         if handler:
             body = await handler(principal, args)
-            if body == BLOCKED_MESSAGE:
-                return self._response(
+            if body.startswith(BLOCKED_MESSAGE):
+                response = self._response(
                     body,
                     intent="blocked",
                     routing=routing,
                     blocked=True,
+                    session_id=chat_session.id,
                 )
+                await self._persist_assistant(sessions, chat_session, response)
+                return response
             await self._maybe_audit_command(principal, intent, args, body)
-            return self._response(body, intent=intent, routing=routing)
+            response = self._response(
+                body,
+                intent=intent,
+                routing=routing,
+                session_id=chat_session.id,
+            )
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
 
-        stub = await self._router.invoke_stub(routing, text)
-        return self._response(stub["response"], intent="general", routing=routing)
+        inference = await self._provider_runtime.infer(
+            InferenceRequest(prompt=text, intent=intent, stream=stream)
+        )
+        await RuntimeTelemetryService(self.session).record_model_usage(inference)
+        usage = token_usage_dict(inference)
+        response = self._response(
+            inference.content,
+            intent="general",
+            routing=routing,
+            session_id=chat_session.id,
+            token_usage=usage,
+        )
+        await self._persist_assistant(sessions, chat_session, response)
+        return response
 
     def _parse_intent(self, text: str) -> tuple[str, dict[str, str]]:
         lowered = text.lower().strip()
@@ -139,6 +190,15 @@ class ChatService:
             pattern = parts[0].strip()
             path = parts[1].strip() if len(parts) > 1 else "."
             return "ripgrep_search", {"pattern": pattern, "path": path}
+
+        if lowered in {"repo analysis", "analyze repo", "analyse repo"}:
+            return "repo_analysis", {"path": "~/Projects/nova"}
+
+        if lowered.startswith("explain code "):
+            return "explain_code", {"path": text[len("explain code ") :].strip()}
+
+        if lowered.startswith("generate patch "):
+            return "patch_plan", {"instruction": text[len("generate patch ") :].strip()}
 
         if re.search(r"\b(run|execute|delete|write|send email|open browser|n8n)\b", lowered):
             return "blocked", {}
@@ -271,6 +331,41 @@ class ChatService:
         suffix = " (truncated)" if output.get("truncated") else ""
         return f"Matches{suffix}:\n" + "\n".join(lines)
 
+    async def _repo_analysis(self, principal: Principal, args: dict[str, str]) -> str:
+        result = self._code_runtime.repo_analysis(args.get("path", "~/Projects/nova"))
+        if not result.success:
+            if self._is_safe_tool_policy_error(result.error):
+                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
+                return BLOCKED_MESSAGE
+            return f"Error: {result.error}"
+        signals = result.output["signals"]
+        return (
+            f"Repo {result.output['repo']} has python={signals['python']}, "
+            f"ios={signals['ios']}, docs={signals['docs']}, tests={signals['tests']}."
+        )
+
+    async def _explain_code(self, principal: Principal, args: dict[str, str]) -> str:
+        result = self._code_runtime.explain_code(args.get("path", ""))
+        if not result.success:
+            if self._is_safe_tool_policy_error(result.error):
+                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
+                return BLOCKED_MESSAGE
+            return f"Error: {result.error}"
+        return (
+            f"{result.output['path']} has {result.output['line_count']} lines. "
+            f"{result.output['summary']}"
+        )
+
+    async def _patch_plan(self, principal: Principal, args: dict[str, str]) -> str:
+        await self._audit_blocked(
+            principal,
+            args.get("instruction", ""),
+            reason="patch_generation_requires_approval",
+        )
+        result = self._code_runtime.patch_plan(args.get("instruction", ""))
+        plan = "; ".join(result.output["plan"])
+        return f"{BLOCKED_MESSAGE} Patch plan prepared for approval: {plan}."
+
     def _is_safe_tool_policy_error(self, error: str | None) -> bool:
         if not error:
             return False
@@ -313,11 +408,33 @@ class ChatService:
         )
         await self.session.commit()
 
-    def _blocked_response(self) -> dict[str, Any]:
+    async def _persist_assistant(
+        self,
+        sessions: ChatSessionService,
+        chat_session: Any,
+        response: dict[str, Any],
+    ) -> None:
+        await sessions.append_message(
+            chat_session,
+            role="assistant",
+            content=str(response["response"]),
+            intent=str(response.get("intent", "general")),
+            blocked=bool(response.get("blocked", False)),
+            routing=response.get("routing"),
+            token_usage=response.get("token_usage"),
+        )
+        await self.session.commit()
+
+    def _title(self, text: str) -> str:
+        title = text.strip().splitlines()[0][:80]
+        return title or "NOVA Chat"
+
+    def _blocked_response(self, *, session_id: str | None = None) -> dict[str, Any]:
         return {
             "response": BLOCKED_MESSAGE,
             "intent": "blocked",
             "blocked": True,
+            "session_id": session_id,
         }
 
     def _response(
@@ -327,12 +444,17 @@ class ChatService:
         intent: str,
         routing: Any | None = None,
         blocked: bool = False,
+        session_id: str | None = None,
+        token_usage: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
             "intent": intent,
             "blocked": blocked,
+            "session_id": session_id,
         }
+        if token_usage is not None:
+            payload["token_usage"] = token_usage
         if routing is not None:
             payload["routing"] = {
                 "provider": routing.provider.value,

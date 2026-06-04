@@ -30,7 +30,10 @@ def verify_token(token: str, pepper: str, stored_hash: str) -> bool:
 
 
 def generate_pairing_code() -> str:
-    return secrets.token_hex(3).upper()
+    while True:
+        code = secrets.token_hex(3).upper()
+        if any(ch.isalpha() for ch in code):
+            return code
 
 
 def generate_websocket_ticket() -> str:

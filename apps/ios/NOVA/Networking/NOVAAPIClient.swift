@@ -113,6 +113,32 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MissionDetail.self, from: data)
     }
 
+    func sendChat(message: String, sessionId: String? = nil) async throws -> ChatAPIResponse {
+        struct Body: Encodable {
+            let message: String
+            let sessionId: String?
+        }
+        let (data, _) = try await request(
+            path: "/api/v1/chat",
+            method: "POST",
+            body: Body(message: message, sessionId: sessionId)
+        )
+        return try decoder.decode(ChatAPIResponse.self, from: data)
+    }
+
+    func sendCompanionPrompt(message: String, targetDeviceId: String? = nil) async throws -> CompanionPromptResponse {
+        struct Body: Encodable {
+            let message: String
+            let targetDeviceId: String?
+        }
+        let (data, _) = try await request(
+            path: "/api/v1/companion/prompts",
+            method: "POST",
+            body: Body(message: message, targetDeviceId: targetDeviceId)
+        )
+        return try decoder.decode(CompanionPromptResponse.self, from: data)
+    }
+
     func fetchMission(id: String) async throws -> MissionDetail {
         let (data, _) = try await request(path: "/api/v1/missions/\(id)")
         return try decoder.decode(MissionDetail.self, from: data)
@@ -224,6 +250,19 @@ struct TimelineResponse: Decodable {
 struct WebSocketTicketResponse: Decodable {
     let ticket: String
     let expiresInSeconds: Int
+}
+
+struct ChatAPIResponse: Decodable {
+    let response: String
+    let intent: String
+    let blocked: Bool
+    let sessionId: String?
+}
+
+struct CompanionPromptResponse: Decodable {
+    let status: String
+    let sessionId: String
+    let messageId: String
 }
 
 struct PairingClaimResponse: Decodable {

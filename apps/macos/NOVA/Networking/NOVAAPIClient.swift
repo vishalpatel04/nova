@@ -105,14 +105,24 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacMissionDetail.self, from: data)
     }
 
-    func sendChat(message: String) async throws -> MacChatResponse {
-        struct Body: Encodable { let message: String }
+    func sendChat(message: String, sessionId: String? = nil) async throws -> MacChatResponse {
+        struct Body: Encodable { let message: String; let sessionId: String? }
         let data = try await request(
             path: "/api/v1/chat",
             method: "POST",
-            body: Body(message: message)
+            body: Body(message: message, sessionId: sessionId)
         )
         return try decoder.decode(MacChatResponse.self, from: data)
+    }
+
+    func fetchRuntimeStatus() async throws -> MacRuntimeStatus {
+        let data = try await request(path: "/api/v1/runtime/status")
+        return try decoder.decode(MacRuntimeStatus.self, from: data)
+    }
+
+    func fetchChatSessions() async throws -> [MacChatSession] {
+        let data = try await request(path: "/api/v1/chat/sessions")
+        return try decoder.decode([MacChatSession].self, from: data)
     }
 
     func fetchTimeline(missionId: String, afterSequence: Int = 0) async throws -> MacTimelineResponse {
@@ -195,4 +205,44 @@ struct MacChatResponse: Decodable {
     let response: String
     let intent: String
     let blocked: Bool
+    let sessionId: String?
+    let tokenUsage: [String: StringValue]?
+}
+
+struct MacRuntimeStatus: Decodable {
+    let localFirst: Bool
+    let paidProvidersEnabled: Bool
+    let providers: [MacProviderHealth]
+}
+
+struct MacProviderHealth: Decodable {
+    let provider: String
+    let configured: Bool
+    let paid: Bool
+    let healthy: Bool
+    let mode: String
+    let detail: String?
+}
+
+struct MacChatSession: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let providerMode: String
+}
+
+enum StringValue: Decodable {
+    case string(String)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .string(String(value))
+        } else if let value = try? container.decode(Bool.self) {
+            self = .string(String(value))
+        } else {
+            self = .string("")
+        }
+    }
 }

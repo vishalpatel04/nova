@@ -168,10 +168,99 @@ class ApiErrorResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
+    session_id: str | None = None
+    stream: bool = False
 
 
 class ChatResponse(BaseModel):
     response: str
     intent: str = "general"
     blocked: bool = False
+    session_id: str | None = None
     routing: dict[str, Any] | None = None
+    token_usage: dict[str, Any] | None = None
+
+
+class ChatMessageRecordResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    intent: str | None = None
+    blocked: bool = False
+    routing: dict[str, Any] | None = None
+    token_usage: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    provider_mode: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ChatMessageRecordResponse] = Field(default_factory=list)
+
+
+class ProviderHealthResponse(BaseModel):
+    provider: str
+    configured: bool
+    paid: bool
+    healthy: bool
+    mode: str
+    detail: str | None = None
+
+
+class RuntimeStatusResponse(BaseModel):
+    local_first: bool
+    paid_providers_enabled: bool
+    providers: list[ProviderHealthResponse]
+
+
+class AutomationExecuteRequest(BaseModel):
+    provider: str
+    action: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    approval_id: str | None = None
+    dry_run: bool = False
+
+
+class AutomationRunResponse(BaseModel):
+    id: str
+    provider: str
+    action: str
+    status: str
+    requires_approval: bool
+    approval_id: str | None = None
+    result_payload: dict[str, Any] | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class ScheduledTaskCreateRequest(BaseModel):
+    title: str
+    provider: str
+    action: str
+    schedule: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScheduledTaskResponse(BaseModel):
+    id: str
+    title: str
+    provider: str
+    action: str
+    schedule: str
+    status: str
+    created_at: datetime
+
+
+class CompanionPromptRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    target_device_id: str | None = None
+
+
+class CompanionPromptResponse(BaseModel):
+    status: str
+    session_id: str
+    message_id: str

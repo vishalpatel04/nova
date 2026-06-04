@@ -52,6 +52,9 @@ class ProviderRouter:
             "read_file",
             "ripgrep_search",
             "create_system_status_mission",
+            "repo_analysis",
+            "explain_code",
+            "patch_plan",
         }
     )
     PLANNING_KEYWORDS = ("architecture", "design", "plan", "refactor", "strategy")

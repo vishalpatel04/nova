@@ -3,6 +3,7 @@ import Foundation
 import Combine
 import AVFoundation
 import Speech
+import SQLite3
 
 @MainActor
 final class MacAppState: ObservableObject {
@@ -22,6 +23,7 @@ final class MacAppState: ObservableObject {
     @Published var chatDraft = ""
     @Published var isChatSending = false
     @Published var chatError: String?
+    @Published var activeChatSessionId: String?
 
     let api = NOVAAPIClient.shared
     @Published var hotkey = GlobalHotkeyManager()
@@ -32,6 +34,7 @@ final class MacAppState: ObservableObject {
     private let userDefaults: UserDefaults
     private let keychainService: String
     private let legacyKeychainService: String
+    private let chatStore = LocalChatStore()
 
     enum VoiceMode: String, CaseIterable {
         case primeOnly = "prime_only"
@@ -82,6 +85,7 @@ final class MacAppState: ObservableObject {
         isPaired = false
         api.baseURL = apiBaseURL
         bootstrapAuthFromKeychain()
+        restoreLocalChat()
         NotificationCenter.default.addObserver(
             forName: .novaHotkeySummon,
             object: nil,
@@ -164,22 +168,33 @@ final class MacAppState: ObservableObject {
             return
         }
         chatError = nil
-        chatMessages.append(ChatMessage(role: .user, content: trimmed))
+        let userMessage = ChatMessage(role: .user, content: trimmed)
+        chatMessages.append(userMessage)
+        chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
         isChatSending = true
         defer { isChatSending = false }
         do {
-            let response = try await api.sendChat(message: trimmed)
+            let response = try await api.sendChat(message: trimmed, sessionId: activeChatSessionId)
+            activeChatSessionId = response.sessionId ?? activeChatSessionId
             let role: ChatMessage.Role = response.blocked ? .error : .assistant
             chatMessages.append(
                 ChatMessage(role: role, content: response.response, blocked: response.blocked)
             )
+            chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
             if response.blocked {
                 chatError = response.response
             }
         } catch {
             chatError = error.localizedDescription
             chatMessages.append(ChatMessage(role: .error, content: error.localizedDescription))
+            chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
         }
+    }
+
+    func restoreLocalChat() {
+        let snapshot = chatStore.load()
+        activeChatSessionId = snapshot.sessionId
+        chatMessages = snapshot.messages
     }
 
     func pollWorkerHealth() async {
@@ -199,6 +214,98 @@ final class MacAppState: ObservableObject {
         }
     }
 }
+
+struct LocalChatSnapshot {
+    let sessionId: String?
+    let messages: [ChatMessage]
+}
+
+final class LocalChatStore {
+    private let dbPath: String
+
+    init(filename: String = "NOVAChat.sqlite") {
+        let base = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = base.appendingPathComponent("NOVA", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        dbPath = dir.appendingPathComponent(filename).path
+        initialize()
+    }
+
+    func save(messages: [ChatMessage], sessionId: String?) {
+        guard let db = open() else { return }
+        defer { sqlite3_close(db) }
+        let data = (try? JSONEncoder().encode(messages)) ?? Data()
+        let sql = """
+        INSERT OR REPLACE INTO chat_snapshots (id, session_id, payload, updated_at)
+        VALUES ('active', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(statement) }
+        if let sessionId {
+            sqlite3_bind_text(statement, 1, sessionId, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 1)
+        }
+        data.withUnsafeBytes { buffer in
+            _ = sqlite3_bind_blob(statement, 2, buffer.baseAddress, Int32(data.count), SQLITE_TRANSIENT)
+        }
+        sqlite3_step(statement)
+    }
+
+    func load() -> LocalChatSnapshot {
+        guard let db = open() else { return LocalChatSnapshot(sessionId: nil, messages: []) }
+        defer { sqlite3_close(db) }
+        let sql = "SELECT session_id, payload FROM chat_snapshots WHERE id = 'active' LIMIT 1;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return LocalChatSnapshot(sessionId: nil, messages: [])
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return LocalChatSnapshot(sessionId: nil, messages: [])
+        }
+        let sessionId = sqlite3_column_text(statement, 0).map { String(cString: $0) }
+        let bytes = sqlite3_column_blob(statement, 1)
+        let count = Int(sqlite3_column_bytes(statement, 1))
+        guard let bytes, count > 0 else {
+            return LocalChatSnapshot(sessionId: sessionId, messages: [])
+        }
+        let data = Data(bytes: bytes, count: count)
+        let messages = (try? JSONDecoder().decode([ChatMessage].self, from: data)) ?? []
+        return LocalChatSnapshot(sessionId: sessionId, messages: messages)
+    }
+
+    private func initialize() {
+        guard let db = open() else { return }
+        defer { sqlite3_close(db) }
+        sqlite3_exec(
+            db,
+            """
+            CREATE TABLE IF NOT EXISTS chat_snapshots (
+              id TEXT PRIMARY KEY,
+              session_id TEXT,
+              payload BLOB NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            """,
+            nil,
+            nil,
+            nil
+        )
+    }
+
+    private func open() -> OpaquePointer? {
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return nil }
+        return db
+    }
+}
+
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 @MainActor
 final class MacSpeechController: ObservableObject {

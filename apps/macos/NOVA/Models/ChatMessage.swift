@@ -1,7 +1,7 @@
 import Foundation
 
-struct ChatMessage: Identifiable, Equatable {
-    enum Role: String, Equatable {
+struct ChatMessage: Identifiable, Equatable, Codable {
+    enum Role: String, Equatable, Codable {
         case user
         case assistant
         case error

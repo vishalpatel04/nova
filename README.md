@@ -53,6 +53,12 @@ bash scripts/run-novagenie-local.sh
 # Try: system status | connected devices | help
 ```
 
+## Phase 3B — Local-first assistant runtime
+
+NOVA now has persisted chat sessions, local-first provider execution, provider health checks,
+approval-gated automation runs, scheduled-task records, companion prompt queuing, and macOS local
+SQLite chat restore. Paid providers remain explicit opt-in. See [Phase 3B Runtime](docs/PHASE_3B_RUNTIME.md).
+
 ## Slice 2C — Native hardening
 
 Automatic pairing polling, macOS Mission Room WebSocket, **⌃⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
@@ -90,6 +96,7 @@ Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), work
 - [Realtime Events](docs/REALTIME_EVENTS.md)
 - [Worker Connection](docs/WORKER_CONNECTION.md)
 - [Phase 3A Automation Foundation](docs/PHASE_3A_AUTOMATION_FOUNDATION.md)
+- [Phase 3B Runtime](docs/PHASE_3B_RUNTIME.md)
 - [Native Client Slice 2C](docs/NATIVE_CLIENT_SLICE_2C.md)
 - [First Live Demo](docs/FIRST_LIVE_DEMO.md)
 - [iOS App](docs/IOS_APP.md)

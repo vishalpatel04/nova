@@ -23,10 +23,17 @@ async def chat(
 ) -> ChatResponse:
     settings = get_settings()
     svc = ChatService(session, settings)
-    result = await svc.handle_message(message=body.message, principal=principal)
+    result = await svc.handle_message(
+        message=body.message,
+        principal=principal,
+        session_id=body.session_id,
+        stream=body.stream,
+    )
     return ChatResponse(
         response=result["response"],
         intent=result.get("intent", "general"),
         blocked=bool(result.get("blocked", False)),
+        session_id=result.get("session_id"),
         routing=result.get("routing"),
+        token_usage=result.get("token_usage"),
     )

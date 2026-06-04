@@ -35,6 +35,20 @@ class Settings(BaseSettings):
         default="nova_bts_dev_bootstrap", alias="NOVA_BOOTSTRAP_ADMIN_TOKEN"
     )
     require_device_token: bool = Field(default=True, alias="NOVA_REQUIRE_DEVICE_TOKEN")
+    nova_paid_providers_enabled: bool = Field(default=False, alias="NOVA_PAID_PROVIDERS_ENABLED")
+    nova_provider_timeout_seconds: float = Field(default=8.0, alias="NOVA_PROVIDER_TIMEOUT_SECONDS")
+    nova_ollama_base_url: str = Field(
+        default="http://localhost:11434", alias="NOVA_OLLAMA_BASE_URL"
+    )
+    nova_openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    nova_anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    nova_deepseek_base_url: str = Field(
+        default="http://localhost:11434", alias="NOVA_DEEPSEEK_BASE_URL"
+    )
+    nova_qwen_base_url: str = Field(default="http://localhost:11434", alias="NOVA_QWEN_BASE_URL")
+    nova_n8n_base_url: str = Field(default="", alias="NOVA_N8N_BASE_URL")
+    nova_openclaw_base_url: str = Field(default="", alias="NOVA_OPENCLAW_BASE_URL")
+    nova_shortcuts_enabled: bool = Field(default=False, alias="NOVA_SHORTCUTS_ENABLED")
 
     @property
     def config_path(self) -> Path:
