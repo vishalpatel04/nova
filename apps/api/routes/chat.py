@@ -56,7 +56,7 @@ async def chat_stream(
     cancel_token = StreamCancelToken()
 
     async def event_generator() -> AsyncIterator[str]:
-        register(cancel_token)
+        register(cancel_token, owner_id=principal.principal_id)
         try:
             async for event in svc.stream_message(
                 message=body.message,
@@ -66,11 +66,11 @@ async def chat_stream(
             ):
                 payload = json.dumps(event.get("data", {}))
                 yield f"event: {event['event']}\ndata: {payload}\n\n"
-        except Exception as exc:
-            payload = json.dumps({"message": str(exc)})
+        except Exception:
+            payload = json.dumps({"message": "Streaming response failed"})
             yield f"event: error\ndata: {payload}\n\n"
         finally:
-            unregister(cancel_token.stream_id)
+            unregister(cancel_token.stream_id, owner_id=principal.principal_id)
 
     return StreamingResponse(
         event_generator(),
@@ -86,7 +86,7 @@ async def chat_stream(
 @router.post("/chat/stream/{stream_id}/cancel", response_model=ChatStreamCancelResponse)
 async def chat_stream_cancel(
     stream_id: str,
-    _principal: Annotated[Principal, Depends(require_roles("client"))],
+    principal: Annotated[Principal, Depends(require_roles("client"))],
 ) -> ChatStreamCancelResponse:
-    cancelled = cancel_stream(stream_id)
+    cancelled = cancel_stream(stream_id, owner_id=principal.principal_id)
     return ChatStreamCancelResponse(stream_id=stream_id, cancelled=cancelled)

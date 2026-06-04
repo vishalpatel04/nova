@@ -138,7 +138,7 @@ class ProviderRuntime:
                 break
             telemetry.token_count += 1
             yield word if index == 0 else f" {word}"
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.005)
 
     def telemetry_from_stream(self, cancel: StreamCancelToken | None) -> StreamTelemetry:
         return StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
@@ -160,7 +160,7 @@ class ProviderRuntime:
             if cancel and cancel.cancelled:
                 break
             yield word if index == 0 else f" {word}"
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.005)
 
     async def _stream_ollama(
         self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -265,6 +266,18 @@ class ChatService:
             content_parts.append(chunk)
             yield {"event": "token", "data": {"delta": chunk}}
 
+        if cancel and cancel.cancelled:
+            yield {"event": "cancelled", "data": {}}
+            await self._persist_partial_assistant(
+                sessions,
+                chat_session,
+                "".join(content_parts),
+                intent="general",
+                routing=routing,
+                cancelled=True,
+            )
+            return
+
         content = "".join(content_parts).strip() or self._provider_runtime._default_help()
         usage = {
             "provider": "local",
@@ -304,6 +317,7 @@ class ChatService:
         chunk_size = 24
         for index in range(0, len(body), chunk_size):
             yield {"event": "token", "data": {"delta": body[index : index + chunk_size]}}
+            await asyncio.sleep(0.005)
         await self._persist_assistant(sessions, chat_session, response)
         yield {
             "event": "done",
