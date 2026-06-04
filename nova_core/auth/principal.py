@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 PrincipalType = Literal["user", "device", "bootstrap_admin"]
+CredentialRole = Literal["admin", "client", "worker"]
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,9 @@ class Principal:
     device_id: str | None = None
     device_type: str | None = None
     token_id: str | None = None
+    token_role: CredentialRole | None = None
+    websocket_scope: str | None = None
+    websocket_mission_id: str | None = None
 
     @property
     def idempotency_scope_id(self) -> str:

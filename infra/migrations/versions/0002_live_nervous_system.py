@@ -117,10 +117,31 @@ def upgrade() -> None:
         sa.Column("queued_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("picked_up_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("picked_up_by_device_id", sa.String(64), nullable=True),
+        sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("command_id", sa.String(128), nullable=True, unique=True),
+    )
+
+    op.create_table(
+        "websocket_tickets",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("ticket_prefix", sa.String(16), nullable=False),
+        sa.Column("ticket_hash", sa.String(128), nullable=False),
+        sa.Column(
+            "credential_id", sa.String(36), sa.ForeignKey("device_credentials.id"), nullable=False
+        ),
+        sa.Column("device_id", sa.String(64), sa.ForeignKey("devices.id"), nullable=False),
+        sa.Column("user_id", sa.String(64), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("scope", sa.String(32), nullable=False),
+        sa.Column("mission_id", sa.String(36), nullable=True),
+        sa.Column("state", sa.String(32), server_default="active"),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
 
 def downgrade() -> None:
+    op.drop_table("websocket_tickets")
     op.drop_table("queued_missions")
     op.drop_table("mission_event_sequences")
     op.drop_table("idempotency_records")

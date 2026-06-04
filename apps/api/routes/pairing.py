@@ -2,13 +2,13 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.auth import get_bootstrap_or_principal
 from apps.api.deps import get_db_session
-from apps.api.services.pairing import PairingService
+from apps.api.services.pairing import AuthService, PairingService
 from nova_core.auth.principal import Principal
 from nova_core.schemas.settings import get_settings
 
@@ -61,12 +61,26 @@ class DeviceRevokeRequest(BaseModel):
     reason: str | None = None
 
 
+class WebSocketTicketRequest(BaseModel):
+    scope: str
+    mission_id: str | None = None
+
+
+class WebSocketTicketResponse(BaseModel):
+    ticket: str
+    expires_in_seconds: int
+
+
 @router.post("/codes", response_model=PairingCodeCreateResponse, status_code=201)
 async def create_pairing_code(
     body: PairingCodeCreateRequest,
     principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
     session: AsyncSession = Depends(get_db_session),
 ) -> PairingCodeCreateResponse:
+    if principal.token_role != "admin":
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Admin credential required")
     settings = get_settings()
     svc = PairingService(session, settings)
     pairing, code = await svc.create_pairing_code(
@@ -86,6 +100,7 @@ async def create_pairing_code(
 @router.post("/claim", response_model=PairingClaimResponse)
 async def claim_pairing_code(
     body: PairingClaimRequest,
+    request: Request,
     session: AsyncSession = Depends(get_db_session),
 ) -> PairingClaimResponse:
     settings = get_settings()
@@ -98,6 +113,7 @@ async def claim_pairing_code(
         hostname=body.hostname,
         os_version=body.os_version,
         architecture=body.architecture,
+        client_ip=request.client.host if request.client else None,
     )
     if token:
         return PairingClaimResponse(
@@ -121,10 +137,32 @@ async def approve_pairing(
     principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
     session: AsyncSession = Depends(get_db_session),
 ) -> PairingApproveResponse:
+    if principal.token_role != "admin":
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Admin credential required")
     settings = get_settings()
     svc = PairingService(session, settings)
     device_id, token = await svc.approve_pairing(pairing_id, principal)
     return PairingApproveResponse(device_id=device_id, token=token)
+
+
+@router.post("/ws-tickets", response_model=WebSocketTicketResponse, tags=["realtime"])
+async def issue_websocket_ticket(
+    body: WebSocketTicketRequest,
+    principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
+    session: AsyncSession = Depends(get_db_session),
+) -> WebSocketTicketResponse:
+    settings = get_settings()
+    svc = AuthService(session, settings)
+    ttl = 60
+    ticket, _row = await svc.issue_websocket_ticket(
+        principal,
+        scope=body.scope,
+        mission_id=body.mission_id,
+        ttl_seconds=ttl,
+    )
+    return WebSocketTicketResponse(ticket=ticket, expires_in_seconds=ttl)
 
 
 devices_router = APIRouter(prefix="/devices", tags=["devices"])
@@ -136,6 +174,10 @@ async def rotate_device_token(
     principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
     session: AsyncSession = Depends(get_db_session),
 ) -> TokenRotateResponse:
+    if principal.token_role != "admin":
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Admin credential required")
     settings = get_settings()
     svc = PairingService(session, settings)
     token = await svc.rotate_token(device_id, principal)
@@ -149,6 +191,10 @@ async def revoke_device(
     principal: Annotated[Principal, Depends(get_bootstrap_or_principal)],
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
+    if principal.token_role != "admin":
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Admin credential required")
     settings = get_settings()
     svc = PairingService(session, settings)
     await svc.revoke_device(device_id, principal, body.reason)

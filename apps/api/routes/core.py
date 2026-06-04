@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import nova_core
-from apps.api.auth import get_current_principal
+from apps.api.auth import require_roles
 from apps.api.deps import get_app_state, get_db_session
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
@@ -80,7 +80,7 @@ async def readiness(session: AsyncSession = Depends(get_db_session)) -> Readines
 
 @router.get("/system/status", response_model=SystemStatusResponse, tags=["system"])
 async def system_status(
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> SystemStatusResponse:
     settings = _get_settings()
@@ -128,7 +128,7 @@ async def system_status(
 
 @router.get("/devices", response_model=list[DeviceResponse], tags=["devices"])
 async def list_devices(
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> list[DeviceResponse]:
     settings = _get_settings()
@@ -158,7 +158,7 @@ async def list_devices(
 
 @router.get("/agents", response_model=list[AgentResponse], tags=["agents"])
 async def list_agents(
-    _principal: Annotated[Principal, Depends(get_current_principal)],
+    _principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> list[AgentResponse]:
     result = await session.execute(select(Agent).order_by(Agent.id))
@@ -183,7 +183,7 @@ async def list_agents(
 @router.post("/missions", response_model=MissionResponse, status_code=201, tags=["missions"])
 async def create_mission(
     body: MissionCreateRequest,
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("client"))],
     session: AsyncSession = Depends(get_db_session),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> MissionResponse:
@@ -204,7 +204,7 @@ async def create_mission(
 @router.get("/missions/{mission_id}", response_model=MissionResponse, tags=["missions"])
 async def get_mission(
     mission_id: str,
-    _principal: Annotated[Principal, Depends(get_current_principal)],
+    _principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> MissionResponse:
     settings = _get_settings()
@@ -216,9 +216,13 @@ async def get_mission(
 @router.post("/workers/register", response_model=WorkerRegisterResponse, tags=["worker"])
 async def register_worker(
     body: WorkerRegisterRequest,
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("worker"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> WorkerRegisterResponse:
+    if principal.device_id and principal.device_id != body.device_id:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Worker token cannot register a different device")
     settings = _get_settings()
     svc = DeviceService(session, settings)
     device = await svc.register_device(
@@ -240,12 +244,16 @@ async def register_worker(
 @router.post("/workers/heartbeat", tags=["worker"])
 async def worker_heartbeat(
     body: WorkerHeartbeatRequest,
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("worker"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     settings = _get_settings()
     svc = DeviceService(session, settings)
     device_id = principal.device_id or body.device_id
+    if principal.device_id and body.device_id and principal.device_id != body.device_id:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Worker token cannot heartbeat for a different device")
     await svc.record_heartbeat(
         device_id=device_id,
         status=body.status,

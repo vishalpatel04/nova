@@ -1,5 +1,29 @@
 # Troubleshooting
 
+## WebSocket closes with 4401 or 4403
+
+- `4401`: request a fresh WebSocket ticket with `POST /api/v1/pairing/ws-tickets`.
+- `4403`: the ticket scope does not match the endpoint, mission id, or credential role.
+
+Bearer tokens are accepted on REST endpoints only. WebSocket URLs must use one-time tickets.
+
+## Pairing claims rate limited
+
+Pairing attempts are limited per source IP and per code. Wait for the TTL window or use a new code. In local development/test, Redis outage falls back to an in-process limiter and logs `pairing_rate_limit_degraded_local`.
+
+## Redis unavailable
+
+Mission timelines remain durable in PostgreSQL. APIs report `streaming: degraded`, and WebSocket replay falls back to PostgreSQL history.
+
+## Queued mission does not start
+
+Check:
+
+- worker device has an active `worker` credential
+- worker requested a `worker` WebSocket ticket
+- worker sent `mission_pickup_ack` with the assigned `command_id`
+- device is not revoked
+
 ## API won't start
 
 ```bash

@@ -119,17 +119,21 @@ async def test_token_revocation(
 
 @pytest.mark.asyncio
 async def test_authenticated_mission(
-    auth_client: AsyncClient, paired_worker_token: tuple[str, str]
+    auth_client: AsyncClient,
+    paired_worker_token: tuple[str, str],
+    paired_client_token: tuple[str, str],
 ) -> None:
-    _device_id, token = paired_worker_token
-    auth_client.headers["Authorization"] = f"Bearer {token}"
+    worker_device_id, worker_token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
 
     hb = await auth_client.post(
         "/api/v1/workers/heartbeat",
-        json={"device_id": _device_id, "status": "online", "payload": {}},
+        json={"device_id": worker_device_id, "status": "online", "payload": {}},
     )
     assert hb.status_code == 200
 
+    _client_device_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     mission = await auth_client.post(
         "/api/v1/missions",
         json={"mission_type": "system_status", "title": "Auth mission"},
@@ -250,8 +254,8 @@ async def test_websocket_auth_rejects_missing_token(
 
 
 @pytest.mark.asyncio
-async def test_websocket_auth_accepts_valid_token(
-    client: AsyncClient, paired_worker_token, db_engine
+async def test_websocket_auth_consumes_valid_ticket_once(
+    auth_client: AsyncClient, paired_worker_token, db_engine
 ) -> None:
     from unittest.mock import MagicMock
 
@@ -260,11 +264,73 @@ async def test_websocket_auth_accepts_valid_token(
     from apps.api.auth import authenticate_websocket
 
     device_id, token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+    issued = await auth_client.post("/api/v1/pairing/ws-tickets", json={"scope": "worker"})
+    assert issued.status_code == 200
+    ticket = issued.json()["ticket"]
     websocket = MagicMock()
-    websocket.query_params = {"token": token}
+    websocket.query_params = {"ticket": ticket}
     websocket.headers = {}
 
     factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with factory() as session:
         principal = await authenticate_websocket(websocket, session)
         assert principal.device_id == device_id
+        assert principal.token_role == "worker"
+        assert principal.websocket_scope == "worker"
+        with pytest.raises(Exception):
+            await authenticate_websocket(websocket, session)
+
+
+@pytest.mark.asyncio
+async def test_credential_scopes_are_separate(
+    auth_client: AsyncClient,
+    paired_worker_token: tuple[str, str],
+    paired_client_token: tuple[str, str],
+) -> None:
+    worker_device_id, worker_token = paired_worker_token
+    client_device_id, client_token = paired_client_token
+
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
+    worker_create = await auth_client.post(
+        "/api/v1/missions",
+        json={"mission_type": "system_status", "title": "Worker should not create"},
+    )
+    assert worker_create.status_code == 401
+
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
+    client_register = await auth_client.post(
+        "/api/v1/workers/register",
+        json={
+            "device_id": client_device_id,
+            "name": "Not Worker",
+            "device_type": "macos_worker",
+            "capabilities": [],
+        },
+    )
+    assert client_register.status_code == 401
+
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
+    worker_register = await auth_client.post(
+        "/api/v1/workers/register",
+        json={
+            "device_id": worker_device_id,
+            "name": "Worker",
+            "device_type": "macos_worker",
+            "capabilities": [],
+        },
+    )
+    assert worker_register.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_websocket_ticket_scope_binding(
+    auth_client: AsyncClient, paired_worker_token: tuple[str, str]
+) -> None:
+    _device_id, worker_token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
+    resp = await auth_client.post(
+        "/api/v1/pairing/ws-tickets",
+        json={"scope": "mission_events", "mission_id": "mission-1"},
+    )
+    assert resp.status_code == 401

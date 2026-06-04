@@ -1,5 +1,6 @@
 """FastAPI authentication dependencies."""
 
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, Header, WebSocket
@@ -34,6 +35,7 @@ async def get_optional_principal(
             principal_type="user",
             principal_id=settings.nova_default_user_id,
             user_id=settings.nova_default_user_id,
+            token_role="admin",
         )
     return None
 
@@ -60,17 +62,26 @@ async def get_bootstrap_or_principal(
 
 async def authenticate_websocket(websocket: WebSocket, session: AsyncSession) -> Principal:
     settings = get_app_state().settings
-    token = websocket.query_params.get("token")
-    if not token:
-        auth_header = websocket.headers.get("authorization")
-        token = _extract_bearer(auth_header)
-    if not token and not settings.require_device_token:
+    ticket = websocket.query_params.get("ticket")
+    if not ticket and not settings.require_device_token:
         return Principal(
             principal_type="user",
             principal_id=settings.nova_default_user_id,
             user_id=settings.nova_default_user_id,
+            token_role="admin",
         )
-    if not token:
-        raise UnauthorizedError("WebSocket authentication required")
+    if not ticket:
+        raise UnauthorizedError("WebSocket ticket required")
     auth = AuthService(session, settings)
-    return await auth.authenticate_token(token)
+    return await auth.consume_websocket_ticket(ticket)
+
+
+def require_roles(*roles: str) -> Callable[..., object]:
+    async def dependency(
+        principal: Annotated[Principal, Depends(get_current_principal)],
+    ) -> Principal:
+        if principal.token_role not in roles:
+            raise UnauthorizedError("Credential scope does not permit this operation")
+        return principal
+
+    return dependency

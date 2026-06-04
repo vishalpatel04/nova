@@ -11,6 +11,7 @@ from nova_core.auth.tokens import (
     TokenKind,
     generate_pairing_code,
     generate_token,
+    generate_websocket_ticket,
     hash_token,
     token_prefix,
 )
@@ -19,8 +20,10 @@ from nova_core.models.orm import (
     Device,
     DeviceCredential,
     DevicePairingCode,
+    QueuedMission,
     TokenRevocation,
     User,
+    WebSocketTicket,
 )
 from nova_core.schemas.errors import (
     ConflictError,
@@ -57,6 +60,34 @@ class PairingRateLimiter:
 _pairing_limiter = PairingRateLimiter()
 
 
+class RedisPairingRateLimiter:
+    def __init__(self, redis: Any | None) -> None:
+        self.redis = redis
+
+    async def check(self, key: str, max_attempts: int, window_seconds: int) -> None:
+        if self.redis is None:
+            _pairing_limiter.check(key, max_attempts, window_seconds)
+            return
+        try:
+            redis_key = f"nova:pairing:attempts:{key}"
+            attempts = await self.redis.incr(redis_key)
+            if attempts == 1:
+                await self.redis.expire(redis_key, window_seconds)
+            if int(attempts) > max_attempts:
+                ttl = await self.redis.ttl(redis_key)
+                raise ValidationError(
+                    "Pairing attempt rate limit exceeded",
+                    details={"retry_after_seconds": max(int(ttl), 1)},
+                )
+        except ValidationError:
+            raise
+        except Exception:
+            from nova_core.sentry.logging import get_logger
+
+            get_logger("nova.pairing").warning("pairing_rate_limit_degraded_local")
+            _pairing_limiter.check(key, max_attempts, window_seconds)
+
+
 class PairingService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self.session = session
@@ -78,6 +109,12 @@ class PairingService:
         policy = self._pairing_policy()
         ttl_minutes = int(policy.get("code_ttl_minutes", 15))
         requires_approval = bool(policy.get("require_approval", True))
+
+        user_result = await self.session.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            self.session.add(User(id=user_id, display_name=user_id))
+            await self.session.flush()
 
         code = generate_pairing_code()
         pairing = DevicePairingCode(
@@ -119,7 +156,17 @@ class PairingService:
     ) -> tuple[DevicePairingCode, str | None]:
         policy = self._pairing_policy()
         max_attempts = int(policy.get("max_attempts_per_hour", 10))
-        _pairing_limiter.check(client_ip or device_id, max_attempts, 3600)
+        window_seconds = int(policy.get("attempt_window_seconds", 3600))
+        redis = None
+        try:
+            from apps.api.deps import get_app_state
+
+            redis = get_app_state().redis
+        except Exception:
+            pass
+        limiter = RedisPairingRateLimiter(redis)
+        await limiter.check(f"ip:{client_ip or 'unknown'}", max_attempts, window_seconds)
+        await limiter.check(f"code:{code.upper()}", max_attempts, window_seconds)
 
         result = await self.session.execute(
             select(DevicePairingCode).where(DevicePairingCode.code == code.upper())
@@ -344,6 +391,17 @@ class PairingService:
                 )
             )
 
+        queued_result = await self.session.execute(
+            select(QueuedMission).where(
+                QueuedMission.picked_up_by_device_id == device_id,
+                QueuedMission.acknowledged_at.is_(None),
+            )
+        )
+        for queued in queued_result.scalars().all():
+            queued.picked_up_at = None
+            queued.picked_up_by_device_id = None
+            queued.command_id = None
+
         await record_audit_event(
             self.session,
             actor_type=principal.principal_type,
@@ -370,6 +428,7 @@ class AuthService:
                 principal_type="bootstrap_admin",
                 principal_id="bootstrap_admin",
                 user_id=self.settings.nova_default_user_id,
+                token_role="admin",
             )
 
         prefix = token_prefix(token)
@@ -399,9 +458,99 @@ class AuthService:
                 device_id=device.id,
                 device_type=device.device_type,
                 token_id=cred.id,
+                token_role=cred.credential_type,
             )
 
         raise UnauthorizedError("Invalid token")
+
+    async def issue_websocket_ticket(
+        self,
+        principal: Principal,
+        *,
+        scope: str,
+        mission_id: str | None = None,
+        ttl_seconds: int = 60,
+    ) -> tuple[str, WebSocketTicket]:
+        if (
+            principal.device_id is None
+            or principal.token_id is None
+            or principal.token_role is None
+        ):
+            raise UnauthorizedError("Device credential required for WebSocket ticket")
+        if scope == "mission_events" and principal.token_role != "client":
+            raise UnauthorizedError("Client credential required for mission event WebSocket")
+        if scope == "worker" and principal.token_role != "worker":
+            raise UnauthorizedError("Worker credential required for worker WebSocket")
+
+        ticket = generate_websocket_ticket()
+        row = WebSocketTicket(
+            ticket_prefix=token_prefix(ticket),
+            ticket_hash=hash_token(ticket, self.settings.nova_token_pepper),
+            credential_id=principal.token_id,
+            device_id=principal.device_id,
+            user_id=principal.user_id,
+            scope=scope,
+            mission_id=mission_id,
+            expires_at=utc_now() + timedelta(seconds=ttl_seconds),
+        )
+        self.session.add(row)
+        await self.session.flush()
+        await record_audit_event(
+            self.session,
+            actor_type=principal.principal_type,
+            actor_id=principal.principal_id,
+            action="websocket_ticket.issued",
+            resource_type="websocket_ticket",
+            resource_id=row.id,
+            details={"scope": scope, "mission_id": mission_id},
+        )
+        await self.session.commit()
+        return ticket, row
+
+    async def consume_websocket_ticket(self, ticket: str) -> Principal:
+        result = await self.session.execute(
+            select(WebSocketTicket, DeviceCredential, Device)
+            .join(DeviceCredential, DeviceCredential.id == WebSocketTicket.credential_id)
+            .join(Device, Device.id == WebSocketTicket.device_id)
+            .where(
+                WebSocketTicket.ticket_prefix == token_prefix(ticket),
+                WebSocketTicket.state == "active",
+                DeviceCredential.state == TokenState.ACTIVE.value,
+            )
+        )
+        for row, cred, device in result.all():
+            if not verify_token_hash(ticket, self.settings.nova_token_pepper, row.ticket_hash):
+                continue
+            if ensure_utc(row.expires_at) < utc_now():
+                row.state = "expired"
+                await self.session.commit()
+                raise UnauthorizedError("WebSocket ticket expired")
+            if device.status == DeviceStatus.REVOKED.value:
+                raise UnauthorizedError("Device revoked")
+            row.state = "consumed"
+            row.consumed_at = utc_now()
+            await record_audit_event(
+                self.session,
+                actor_type="device",
+                actor_id=device.id,
+                action="websocket_ticket.consumed",
+                resource_type="websocket_ticket",
+                resource_id=row.id,
+                details={"scope": row.scope, "mission_id": row.mission_id},
+            )
+            await self.session.commit()
+            return Principal(
+                principal_type="device",
+                principal_id=device.id,
+                user_id=device.user_id,
+                device_id=device.id,
+                device_type=device.device_type,
+                token_id=cred.id,
+                token_role=cred.credential_type,
+                websocket_scope=row.scope,
+                websocket_mission_id=row.mission_id,
+            )
+        raise UnauthorizedError("Invalid WebSocket ticket")
 
 
 def verify_token_hash(token: str, pepper: str, stored_hash: str) -> bool:

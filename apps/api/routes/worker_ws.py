@@ -36,6 +36,9 @@ async def worker_websocket(websocket: WebSocket) -> None:
         if principal.device_id is None:
             await websocket.close(code=4403, reason="Worker token required")
             return
+        if principal.token_role != "worker" or principal.websocket_scope != "worker":
+            await websocket.close(code=4403, reason="Worker ticket required")
+            return
 
         device_id = principal.device_id
         await websocket.accept()
@@ -59,9 +62,9 @@ async def worker_websocket(websocket: WebSocket) -> None:
 
         await websocket.send_json({"type": "connected", "device_id": device_id})
 
-        picked = await mission_svc.pickup_queued_missions(device_id)
-        if picked:
-            await websocket.send_json({"type": "missions_assigned", "mission_ids": picked})
+        assigned = await mission_svc.assign_queued_missions(device_id)
+        if assigned:
+            await websocket.send_json({"type": "missions_assigned", "assignments": assigned})
 
         try:
             while True:
@@ -121,6 +124,21 @@ async def _handle_worker_message(
 
     elif msg_type == "ping":
         await websocket.send_json({"type": "pong"})
+
+    elif msg_type == "mission_pickup_ack":
+        mission_id = msg.get("mission_id")
+        command_id = msg.get("command_id")
+        if not mission_id or not command_id:
+            await websocket.send_json(
+                {"type": "error", "message": "mission_id and command_id are required"}
+            )
+            return
+        await mission_svc.acknowledge_worker_pickup(
+            device_id=device_id,
+            mission_id=mission_id,
+            command_id=command_id,
+        )
+        await websocket.send_json({"type": "mission_pickup_acknowledged", "mission_id": mission_id})
 
     else:
         await websocket.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})

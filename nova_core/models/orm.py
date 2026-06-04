@@ -356,3 +356,24 @@ class QueuedMission(Base):
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_by_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    command_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+
+
+class WebSocketTicket(Base):
+    __tablename__ = "websocket_tickets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    ticket_prefix: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    ticket_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    credential_id: Mapped[str] = mapped_column(
+        ForeignKey("device_credentials.id"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    mission_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    state: Mapped[str] = mapped_column(String(32), default="active")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

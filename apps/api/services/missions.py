@@ -248,27 +248,82 @@ class MissionService:
         mission = await self.execute_mission(mission.id)
         return await self.get_mission(mission.id)
 
-    async def pickup_queued_missions(self, device_id: str) -> list[str]:
+    async def assign_queued_missions(self, device_id: str) -> list[dict[str, str]]:
         result = await self.session.execute(
             select(QueuedMission)
-            .where(QueuedMission.picked_up_at.is_(None))
+            .where(QueuedMission.acknowledged_at.is_(None))
             .order_by(QueuedMission.priority.desc(), QueuedMission.queued_at)
         )
-        picked: list[str] = []
+        assigned: list[dict[str, str]] = []
         from datetime import UTC, datetime
 
         for queued in result.scalars().all():
             mission = await self.get_mission(queued.mission_id)
             if mission.status != MissionStatus.QUEUED_WAITING_FOR_WORKER.value:
                 continue
-            queued.picked_up_at = datetime.now(UTC)
-            queued.picked_up_by_device_id = device_id
-            mission.status = MissionStatus.PENDING.value
-            await self.session.flush()
-            await self.execute_mission(mission.id)
-            picked.append(mission.id)
+            if queued.picked_up_by_device_id and queued.picked_up_by_device_id != device_id:
+                continue
+            if queued.picked_up_at is None:
+                queued.picked_up_at = datetime.now(UTC)
+                queued.picked_up_by_device_id = device_id
+                queued.command_id = f"mission:{mission.id}:worker:{device_id}"
+                await publish_timeline_event(
+                    self.session,
+                    get_app_state().redis,
+                    mission_id=mission.id,
+                    event_type=TimelineEventType.WORKER_HEARTBEAT.value,
+                    agent_id="nova",
+                    message="Mission assigned to worker and waiting for pickup acknowledgement",
+                    payload={"device_id": device_id, "command_id": queued.command_id},
+                )
+            assigned.append({"mission_id": mission.id, "command_id": queued.command_id or ""})
         await self.session.commit()
-        return picked
+        return assigned
+
+    async def acknowledge_worker_pickup(
+        self, *, device_id: str, mission_id: str, command_id: str
+    ) -> Mission:
+        result = await self.session.execute(
+            select(QueuedMission).where(QueuedMission.mission_id == mission_id)
+        )
+        queued = result.scalar_one_or_none()
+        if not queued:
+            raise NotFoundError("QueuedMission", mission_id)
+        if queued.command_id != command_id or queued.picked_up_by_device_id != device_id:
+            raise ConflictError("Worker pickup acknowledgement does not match assignment")
+
+        mission = await self.get_mission(mission_id)
+        if queued.acknowledged_at is not None:
+            return mission
+        from datetime import UTC, datetime
+
+        queued.acknowledged_at = datetime.now(UTC)
+        mission.status = MissionStatus.RUNNING.value
+        mission.started_at = datetime.now(UTC)
+        await publish_timeline_event(
+            self.session,
+            get_app_state().redis,
+            mission_id=mission.id,
+            event_type=TimelineEventType.MISSION_STARTED.value,
+            agent_id="nova",
+            message="Worker acknowledged mission pickup",
+            payload={"device_id": device_id, "command_id": command_id},
+        )
+        await record_audit_event(
+            self.session,
+            actor_type="device",
+            actor_id=device_id,
+            action="worker.mission_pickup_acknowledged",
+            resource_type="mission",
+            resource_id=mission.id,
+            details={"command_id": command_id},
+        )
+        await self.session.commit()
+        return mission
+
+    async def pickup_queued_missions(self, device_id: str) -> list[str]:
+        assigned = await self.assign_queued_missions(device_id)
+        return [item["mission_id"] for item in assigned]
 
     async def get_timeline(self, mission_id: str, after_sequence: int = 0) -> list[TimelineEvent]:
         result = await self.session.execute(

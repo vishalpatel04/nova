@@ -128,3 +128,34 @@ async def paired_worker_token(auth_client: AsyncClient) -> tuple[str, str]:
         assert approve_resp.status_code == 200
         return approve_resp.json()["device_id"], approve_resp.json()["token"]
     return claim_resp.json()["device_id"], claim_resp.json()["token"]
+
+
+@pytest_asyncio.fixture
+async def paired_client_token(auth_client: AsyncClient) -> tuple[str, str]:
+    """Create pairing code and claim client — returns (device_id, token)."""
+    import uuid
+
+    device_id = f"test-client-{uuid.uuid4().hex[:8]}"
+    create_resp = await auth_client.post(
+        "/api/v1/pairing/codes",
+        json={"device_type": "iphone_client", "proposed_device_id": device_id},
+    )
+    assert create_resp.status_code == 201
+    code = create_resp.json()["code"]
+    pairing_id = create_resp.json()["pairing_id"]
+
+    claim_resp = await auth_client.post(
+        "/api/v1/pairing/claim",
+        json={
+            "code": code,
+            "device_id": device_id,
+            "name": "Test Client",
+            "device_type": "iphone_client",
+        },
+    )
+    assert claim_resp.status_code == 200, claim_resp.text
+    if claim_resp.json().get("status") == "pending_approval":
+        approve_resp = await auth_client.post(f"/api/v1/pairing/{pairing_id}/approve")
+        assert approve_resp.status_code == 200
+        return approve_resp.json()["device_id"], approve_resp.json()["token"]
+    return claim_resp.json()["device_id"], claim_resp.json()["token"]

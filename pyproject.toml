@@ -73,3 +73,7 @@ plugins = []
 [[tool.mypy.overrides]]
 module = ["apps.*", "tests.*"]
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["tests.*", "scripts.generate_xcode_projects"]
+ignore_errors = true

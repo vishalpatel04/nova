@@ -6,10 +6,16 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_idempotency_returns_same_mission(
-    auth_client: AsyncClient, paired_worker_token
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
 ) -> None:
-    _device_id, token = paired_worker_token
-    auth_client.headers["Authorization"] = f"Bearer {token}"
+    _device_id, worker_token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
+    await auth_client.post(
+        "/api/v1/workers/heartbeat",
+        json={"device_id": _device_id, "status": "online"},
+    )
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     headers = {"Idempotency-Key": "scoped-key-001"}
 
     r1 = await auth_client.post(
@@ -28,9 +34,17 @@ async def test_idempotency_returns_same_mission(
 
 
 @pytest.mark.asyncio
-async def test_conflicting_idempotency_key(auth_client: AsyncClient, paired_worker_token) -> None:
-    _device_id, token = paired_worker_token
-    auth_client.headers["Authorization"] = f"Bearer {token}"
+async def test_conflicting_idempotency_key(
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
+) -> None:
+    _device_id, worker_token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {worker_token}"
+    await auth_client.post(
+        "/api/v1/workers/heartbeat",
+        json={"device_id": _device_id, "status": "online"},
+    )
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     headers = {"Idempotency-Key": "conflict-key-001"}
 
     r1 = await auth_client.post(

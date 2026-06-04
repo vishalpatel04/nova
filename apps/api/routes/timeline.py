@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.auth import authenticate_websocket, get_current_principal
+from apps.api.auth import authenticate_websocket, require_roles
 from apps.api.deps import get_app_state, get_db_session
 from apps.api.services.missions import MissionService
 from nova_core.auth.principal import Principal
@@ -35,7 +35,7 @@ class StreamingStatusResponse(BaseModel):
 @router.get("/missions/{mission_id}/timeline", response_model=TimelineListResponse)
 async def get_mission_timeline(
     mission_id: str,
-    principal: Annotated[Principal, Depends(get_current_principal)],
+    principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
     after_sequence: int = Query(default=0, ge=0),
 ) -> TimelineListResponse:
@@ -67,7 +67,7 @@ async def get_mission_timeline(
 
 @router.get("/system/streaming-status", response_model=StreamingStatusResponse)
 async def streaming_status(
-    _principal: Annotated[Principal, Depends(get_current_principal)],
+    _principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
 ) -> StreamingStatusResponse:
     state = get_app_state()
     if state.redis:
@@ -90,9 +90,16 @@ async def mission_events_ws(
 
     async for session in get_session():
         try:
-            await authenticate_websocket(websocket, session)
+            principal = await authenticate_websocket(websocket, session)
         except Exception:
             await websocket.close(code=4401, reason="Unauthorized")
+            return
+        if (
+            principal.token_role != "client"
+            or principal.websocket_scope != "mission_events"
+            or principal.websocket_mission_id != mission_id
+        ):
+            await websocket.close(code=4403, reason="Ticket scope mismatch")
             return
 
         svc = MissionService(session, settings)

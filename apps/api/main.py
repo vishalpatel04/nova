@@ -73,6 +73,16 @@ def _validate_startup(settings: Settings) -> None:
     ]
     for cfg in required_configs:
         settings.load_yaml(cfg)
+    if settings.nova_env not in {"development", "test"}:
+        if settings.nova_token_pepper == "dev-pepper-change-in-production":
+            raise RuntimeError("NOVA_TOKEN_PEPPER must be set outside development/test")
+        if (
+            settings.nova_bootstrap_admin_enabled
+            and settings.nova_bootstrap_admin_token == "nova_bts_dev_bootstrap"
+        ):
+            raise RuntimeError(
+                "NOVA_BOOTSTRAP_ADMIN_TOKEN must be changed outside development/test"
+            )
     logger.info("startup_validation_passed")
 
 

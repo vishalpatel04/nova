@@ -62,16 +62,20 @@ async def test_worker_heartbeat(auth_client: AsyncClient, paired_worker_token) -
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_unknown_device(auth_client: AsyncClient) -> None:
+async def test_heartbeat_unknown_device(auth_client: AsyncClient, paired_worker_token) -> None:
+    _device_id, token = paired_worker_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
     response = await auth_client.post(
         "/api/v1/workers/heartbeat",
         json={"device_id": "nonexistent-device", "status": "online"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_devices_list(auth_client: AsyncClient, paired_worker_token) -> None:
+async def test_devices_list(
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
+) -> None:
     device_id, token = paired_worker_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
     await auth_client.post(
@@ -84,6 +88,8 @@ async def test_devices_list(auth_client: AsyncClient, paired_worker_token) -> No
         },
     )
 
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     response = await auth_client.get("/api/v1/devices")
     assert response.status_code == 200
     devices = response.json()

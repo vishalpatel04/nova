@@ -5,7 +5,9 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_timeline_has_sequence_numbers(auth_client: AsyncClient, paired_worker_token) -> None:
+async def test_timeline_has_sequence_numbers(
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
+) -> None:
     _device_id, token = paired_worker_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
 
@@ -13,6 +15,8 @@ async def test_timeline_has_sequence_numbers(auth_client: AsyncClient, paired_wo
         "/api/v1/workers/heartbeat",
         json={"device_id": _device_id, "status": "online"},
     )
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
 
     mission_resp = await auth_client.post(
         "/api/v1/missions",
@@ -33,10 +37,16 @@ async def test_timeline_has_sequence_numbers(auth_client: AsyncClient, paired_wo
 
 @pytest.mark.asyncio
 async def test_postgresql_timeline_durability(
-    auth_client: AsyncClient, paired_worker_token
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
 ) -> None:
     _device_id, token = paired_worker_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
+    await auth_client.post(
+        "/api/v1/workers/heartbeat",
+        json={"device_id": _device_id, "status": "online"},
+    )
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
 
     mission_resp = await auth_client.post(
         "/api/v1/missions",
@@ -107,7 +117,7 @@ async def test_redis_stream_append_and_replay(db_session, fake_redis, test_setti
 
 @pytest.mark.asyncio
 async def test_timeline_replay_after_sequence(
-    auth_client: AsyncClient, paired_worker_token
+    auth_client: AsyncClient, paired_worker_token, paired_client_token
 ) -> None:
     device_id, token = paired_worker_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
@@ -115,6 +125,8 @@ async def test_timeline_replay_after_sequence(
         "/api/v1/workers/heartbeat",
         json={"device_id": device_id, "status": "online"},
     )
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     mission = await auth_client.post(
         "/api/v1/missions",
         json={"mission_type": "system_status", "title": "Replay test"},

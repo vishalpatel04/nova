@@ -31,3 +31,7 @@ def verify_token(token: str, pepper: str, stored_hash: str) -> bool:
 
 def generate_pairing_code() -> str:
     return secrets.token_hex(3).upper()
+
+
+def generate_websocket_ticket() -> str:
+    return f"nova_wst_{secrets.token_urlsafe(32)}"

@@ -44,9 +44,13 @@ async def _ensure_worker_online(
 
 @pytest.mark.asyncio
 async def test_create_system_status_mission(
-    auth_client: AsyncClient, paired_worker_token: tuple[str, str]
+    auth_client: AsyncClient,
+    paired_worker_token: tuple[str, str],
+    paired_client_token: tuple[str, str],
 ) -> None:
     await _ensure_worker_online(auth_client, paired_worker_token)
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     response = await auth_client.post(
         "/api/v1/missions",
         json={"mission_type": "system_status", "title": "Check system status"},
@@ -63,9 +67,13 @@ async def test_create_system_status_mission(
 
 @pytest.mark.asyncio
 async def test_get_mission_detail(
-    auth_client: AsyncClient, paired_worker_token: tuple[str, str]
+    auth_client: AsyncClient,
+    paired_worker_token: tuple[str, str],
+    paired_client_token: tuple[str, str],
 ) -> None:
     await _ensure_worker_online(auth_client, paired_worker_token)
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     create_resp = await auth_client.post(
         "/api/v1/missions",
         json={"mission_type": "system_status", "title": "Detail test"},
@@ -81,7 +89,11 @@ async def test_get_mission_detail(
 
 
 @pytest.mark.asyncio
-async def test_unknown_mission_type(auth_client: AsyncClient) -> None:
+async def test_unknown_mission_type(
+    auth_client: AsyncClient, paired_client_token: tuple[str, str]
+) -> None:
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
     response = await auth_client.post(
         "/api/v1/missions",
         json={"mission_type": "nonexistent", "title": "Bad type"},
