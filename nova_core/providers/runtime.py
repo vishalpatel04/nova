@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 import httpx
 
 from nova_core.providers.router import ProviderName
+from nova_core.providers.stream_context import StreamCancelToken, StreamTelemetry
 from nova_core.schemas.settings import Settings
 
 
@@ -96,12 +98,106 @@ class ProviderRuntime:
                 continue
         return self._local_degraded_response(request, last_error)
 
-    async def stream(self, request: InferenceRequest) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        request: InferenceRequest,
+        *,
+        cancel: StreamCancelToken | None = None,
+    ) -> AsyncIterator[str]:
+        telemetry = StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
+        for index, provider in enumerate(self.configured_chain()):
+            if cancel and cancel.cancelled:
+                telemetry.cancelled = True
+                break
+            if not self._configured(provider):
+                continue
+            try:
+                async for chunk in self._stream_provider(provider, request, cancel=cancel):
+                    if cancel and cancel.cancelled:
+                        telemetry.cancelled = True
+                        break
+                    telemetry.token_count += 1
+                    telemetry.provider = provider.value
+                    yield chunk
+                if telemetry.token_count > 0:
+                    telemetry.fallback_used = index > 0
+                    return
+            except Exception:
+                continue
+
         result = await self.infer(request)
+        telemetry.provider = result.provider.value
+        telemetry.model = result.model
+        telemetry.mode = result.mode
+        telemetry.fallback_used = result.fallback_used
+        telemetry.error = result.error
         words = result.content.split(" ")
         for index, word in enumerate(words):
+            if cancel and cancel.cancelled:
+                telemetry.cancelled = True
+                break
+            telemetry.token_count += 1
             yield word if index == 0 else f" {word}"
             await asyncio.sleep(0)
+
+    def telemetry_from_stream(self, cancel: StreamCancelToken | None) -> StreamTelemetry:
+        return StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
+
+    async def _stream_provider(
+        self,
+        provider: ProviderName,
+        request: InferenceRequest,
+        *,
+        cancel: StreamCancelToken | None = None,
+    ) -> AsyncIterator[str]:
+        if provider in {ProviderName.LOCAL, ProviderName.QWEN, ProviderName.DEEPSEEK}:
+            async for chunk in self._stream_ollama(provider, request, cancel=cancel):
+                yield chunk
+            return
+        result = await self._infer_provider(provider, request)
+        words = result.content.split(" ")
+        for index, word in enumerate(words):
+            if cancel and cancel.cancelled:
+                break
+            yield word if index == 0 else f" {word}"
+            await asyncio.sleep(0)
+
+    async def _stream_ollama(
+        self,
+        provider: ProviderName,
+        request: InferenceRequest,
+        *,
+        cancel: StreamCancelToken | None = None,
+    ) -> AsyncIterator[str]:
+        model = {
+            ProviderName.QWEN: "qwen2.5",
+            ProviderName.DEEPSEEK: "deepseek-r1",
+        }.get(provider, "llama3.2")
+        payload = {
+            "model": model,
+            "prompt": f"{request.system_prompt}\n\nUser: {request.prompt}\nNOVA:",
+            "stream": True,
+        }
+        async with (
+            httpx.AsyncClient(timeout=self.timeout) as client,
+            client.stream(
+                "POST",
+                f"{self._base_url(provider)}/api/generate",
+                json=payload,
+            ) as resp,
+        ):
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if cancel and cancel.cancelled:
+                    break
+                if not line:
+                    continue
+                data = json.loads(line)
+                chunk = str(data.get("response", ""))
+                if chunk:
+                    yield chunk
+                if data.get("done"):
+                    break
 
     async def _health(self, provider: ProviderName) -> ProviderHealth:
         configured = self._configured(provider)

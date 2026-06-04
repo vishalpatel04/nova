@@ -103,6 +103,15 @@ class ChatSessionService:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_session(self, principal: Principal) -> ChatSession | None:
+        result = await self.session.execute(
+            select(ChatSession)
+            .where(ChatSession.user_id == principal.user_id)
+            .order_by(ChatSession.updated_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
 
 class RuntimeTelemetryService:
     def __init__(self, session: AsyncSession) -> None:

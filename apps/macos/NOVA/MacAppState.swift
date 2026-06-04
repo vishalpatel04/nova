@@ -24,8 +24,12 @@ final class MacAppState: ObservableObject {
     @Published var isChatSending = false
     @Published var chatError: String?
     @Published var activeChatSessionId: String?
+    @Published var isChatStreaming = false
+    @Published var providerHealthy = false
+    @Published var providerModeLabel = "local"
 
     let api = NOVAAPIClient.shared
+    let chatStreamClient = ChatStreamClient()
     @Published var hotkey = GlobalHotkeyManager()
     @Published var summonListen = false
     @Published private(set) var pairedDeviceId: String?
@@ -86,6 +90,7 @@ final class MacAppState: ObservableObject {
         api.baseURL = apiBaseURL
         bootstrapAuthFromKeychain()
         restoreLocalChat()
+        chatDraft = userDefaults.string(forKey: "nova_chat_draft") ?? ""
         NotificationCenter.default.addObserver(
             forName: .novaHotkeySummon,
             object: nil,
@@ -106,6 +111,8 @@ final class MacAppState: ObservableObject {
         NovaHotkeyTelemetry.emit("nova_app_started")
         bootstrapAuthFromKeychain()
         menuBarCoordinator.initialize(appState: self)
+        Task { await restoreSessionFromBackend() }
+        Task { await refreshRuntimeStatus() }
     }
 
     func bootstrapAuthFromKeychain() {
@@ -160,6 +167,8 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
     }
 
+    private var pendingStreamFailed = false
+
     func sendChatMessage(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -170,24 +179,153 @@ final class MacAppState: ObservableObject {
         chatError = nil
         let userMessage = ChatMessage(role: .user, content: trimmed)
         chatMessages.append(userMessage)
-        chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
+        persistChatSnapshot()
+
+        let assistantId = UUID()
+        chatMessages.append(
+            ChatMessage(id: assistantId, role: .assistant, content: "", isStreaming: true)
+        )
         isChatSending = true
-        defer { isChatSending = false }
+        isChatStreaming = true
+        pendingStreamFailed = false
+
+        chatStreamClient.streamChat(api: api, message: trimmed, sessionId: activeChatSessionId) { [weak self] event in
+            Task { @MainActor in
+                self?.handleStreamEvent(event, assistantId: assistantId)
+            }
+        }
+
+        while isChatStreaming {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        isChatSending = false
+        if pendingStreamFailed {
+            await sendChatMessageFallback(trimmed, assistantId: assistantId)
+        }
+    }
+
+    func cancelActiveChatStream() {
+        chatStreamClient.cancel()
+        isChatStreaming = false
+        isChatSending = false
+        if let index = chatMessages.lastIndex(where: { $0.isStreaming }) {
+            var message = chatMessages[index]
+            message.isStreaming = false
+            if message.content.isEmpty {
+                message.content = "(cancelled)"
+            }
+            chatMessages[index] = message
+        }
+        persistChatSnapshot()
+    }
+
+    private func handleStreamEvent(_ event: ChatStreamEvent, assistantId: UUID) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == assistantId }) else { return }
+        switch event.kind {
+        case .session(let sessionId, _):
+            activeChatSessionId = sessionId
+        case .token(let delta):
+            var message = chatMessages[index]
+            message.content += delta
+            chatMessages[index] = message
+        case .done(_, let blocked, let sessionId):
+            var message = chatMessages[index]
+            message.isStreaming = false
+            message.blocked = blocked
+            if blocked { message.role = .error }
+            chatMessages[index] = message
+            activeChatSessionId = sessionId ?? activeChatSessionId
+            isChatStreaming = false
+            if blocked { chatError = message.content }
+            persistChatSnapshot()
+        case .cancelled:
+            cancelActiveChatStream()
+        case .error:
+            pendingStreamFailed = true
+            isChatStreaming = false
+            chatMessages.removeAll { $0.id == assistantId }
+        }
+    }
+
+    private func sendChatMessageFallback(_ trimmed: String, assistantId: UUID) async {
         do {
             let response = try await api.sendChat(message: trimmed, sessionId: activeChatSessionId)
             activeChatSessionId = response.sessionId ?? activeChatSessionId
             let role: ChatMessage.Role = response.blocked ? .error : .assistant
-            chatMessages.append(
-                ChatMessage(role: role, content: response.response, blocked: response.blocked)
-            )
-            chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
-            if response.blocked {
-                chatError = response.response
+            if let index = chatMessages.firstIndex(where: { $0.id == assistantId }) {
+                chatMessages[index] = ChatMessage(
+                    id: assistantId,
+                    role: role,
+                    content: response.response,
+                    blocked: response.blocked
+                )
+            } else {
+                chatMessages.append(
+                    ChatMessage(role: role, content: response.response, blocked: response.blocked)
+                )
             }
+            persistChatSnapshot()
+            if response.blocked { chatError = response.response }
         } catch {
             chatError = error.localizedDescription
             chatMessages.append(ChatMessage(role: .error, content: error.localizedDescription))
-            chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
+            persistChatSnapshot()
+        }
+    }
+
+    func restoreSessionFromBackend() async {
+        guard isPaired else { return }
+        do {
+            let session = try await api.fetchLatestChatSession()
+            activeChatSessionId = session.id
+            let backendMessages = session.messages.map { record in
+                ChatMessage(
+                    role: record.role == "user" ? .user : (record.blocked ? .error : .assistant),
+                    content: record.content,
+                    blocked: record.blocked
+                )
+            }
+            if backendMessages.count >= chatMessages.count {
+                chatMessages = backendMessages
+            }
+            persistChatSnapshot()
+        } catch {
+            // Keep local snapshot when backend has no session yet.
+        }
+    }
+
+    func restoreSession(sessionId: String) async {
+        guard isPaired else { return }
+        do {
+            let session = try await api.fetchChatSession(id: sessionId)
+            activeChatSessionId = session.id
+            chatMessages = session.messages.map { record in
+                ChatMessage(
+                    role: record.role == "user" ? .user : (record.blocked ? .error : .assistant),
+                    content: record.content,
+                    blocked: record.blocked
+                )
+            }
+            persistChatSnapshot()
+        } catch {
+            chatError = error.localizedDescription
+        }
+    }
+
+    func persistChatSnapshot() {
+        chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
+        userDefaults.set(chatDraft, forKey: "nova_chat_draft")
+    }
+
+    func refreshRuntimeStatus() async {
+        guard isPaired else { return }
+        do {
+            let status = try await api.fetchRuntimeStatus()
+            providerHealthy = status.providers.first(where: { $0.provider == "local" })?.healthy ?? false
+            providerModeLabel = status.localFirst ? "local-first" : "remote"
+        } catch {
+            providerHealthy = false
         }
     }
 

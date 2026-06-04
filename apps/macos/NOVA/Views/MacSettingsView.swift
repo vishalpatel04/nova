@@ -111,6 +111,10 @@ struct MacSettingsView: View {
             .tabItem { Label("General", systemImage: "gear") }
 
             MacDevicesView().tabItem { Label("Devices", systemImage: "desktopcomputer") }
+            NavigationStack { SessionListView() }
+                .tabItem { Label("Sessions", systemImage: "clock.arrow.circlepath") }
+            NavigationStack { CompanionInboxView() }
+                .tabItem { Label("Companion", systemImage: "tray.full") }
             MacAgentsView().tabItem { Label("Agents", systemImage: "person.3") }
             MacMissionRoomView().tabItem { Label("Missions", systemImage: "list.bullet") }
         }

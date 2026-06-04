@@ -309,6 +309,22 @@ class AutomationRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CompanionInboxItem(Base):
+    __tablename__ = "companion_inbox_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    source_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ScheduledTask(Base):
     __tablename__ = "scheduled_tasks"
 

@@ -115,6 +115,88 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacChatResponse.self, from: data)
     }
 
+    struct ChatStreamHandle {
+        let streamId: String?
+        let lines: AsyncThrowingStream<String, Error>
+    }
+
+    func openChatStream(message: String, sessionId: String? = nil) async throws -> ChatStreamHandle {
+        guard let url = URL(string: "\(baseURL)/api/v1/chat/stream") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        guard let token = deviceToken else { throw URLError(.userAuthenticationRequired) }
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        struct Body: Encodable { let message: String; let sessionId: String? }
+        req.httpBody = try encoder.encode(Body(message: message, sessionId: sessionId))
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            throw URLError(.badServerResponse)
+        }
+        let streamId = http.value(forHTTPHeaderField: "X-NOVA-Stream-Id")
+        let lines = AsyncThrowingStream<String, Error> { continuation in
+            Task {
+                do {
+                    for try await line in bytes.lines {
+                        continuation.yield(line)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+        return ChatStreamHandle(streamId: streamId, lines: lines)
+    }
+
+    func cancelChatStream(streamId: String) async throws {
+        _ = try await request(path: "/api/v1/chat/stream/\(streamId)/cancel", method: "POST")
+    }
+
+    func fetchLatestChatSession() async throws -> MacChatSessionDetail {
+        let data = try await request(path: "/api/v1/chat/sessions/latest")
+        return try decoder.decode(MacChatSessionDetail.self, from: data)
+    }
+
+    func fetchChatSession(id: String) async throws -> MacChatSessionDetail {
+        let data = try await request(path: "/api/v1/chat/sessions/\(id)")
+        return try decoder.decode(MacChatSessionDetail.self, from: data)
+    }
+
+    func fetchChatSessionSummaries() async throws -> [MacChatSessionSummary] {
+        let data = try await request(path: "/api/v1/chat/sessions")
+        return try decoder.decode([MacChatSessionSummary].self, from: data)
+    }
+
+    func fetchCompanionInbox(deviceId: String?) async throws -> [MacCompanionInboxItem] {
+        var path = "/api/v1/companion/inbox"
+        if let deviceId { path += "?device_id=\(deviceId)" }
+        let data = try await request(path: path)
+        return try decoder.decode([MacCompanionInboxItem].self, from: data)
+    }
+
+    func sendCompanionPrompt(message: String, targetDeviceId: String) async throws -> MacCompanionPromptResponse {
+        struct Body: Encodable { let message: String; let targetDeviceId: String }
+        let data = try await request(
+            path: "/api/v1/companion/prompts",
+            method: "POST",
+            body: Body(message: message, targetDeviceId: targetDeviceId)
+        )
+        return try decoder.decode(MacCompanionPromptResponse.self, from: data)
+    }
+
+    func markCompanionInboxRead(itemId: String) async throws -> MacCompanionInboxItem {
+        let data = try await request(path: "/api/v1/companion/inbox/\(itemId)/read", method: "POST")
+        return try decoder.decode(MacCompanionInboxItem.self, from: data)
+    }
+
+    func fetchSchedulerStatus() async throws -> MacSchedulerStatus {
+        let data = try await request(path: "/api/v1/scheduler/status")
+        return try decoder.decode(MacSchedulerStatus.self, from: data)
+    }
+
     func fetchRuntimeStatus() async throws -> MacRuntimeStatus {
         let data = try await request(path: "/api/v1/runtime/status")
         return try decoder.decode(MacRuntimeStatus.self, from: data)
@@ -228,6 +310,46 @@ struct MacChatSession: Decodable, Identifiable {
     let id: String
     let title: String
     let providerMode: String
+    let updatedAt: Date?
+}
+
+struct MacChatSessionSummary: Identifiable, Decodable {
+    let id: String
+    let title: String
+    let updatedAt: Date
+}
+
+struct MacChatSessionDetail: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let messages: [MacChatSessionMessage]
+}
+
+struct MacChatSessionMessage: Decodable {
+    let role: String
+    let content: String
+    let blocked: Bool
+}
+
+struct MacCompanionPromptResponse: Decodable {
+    let status: String
+    let sessionId: String
+    let messageId: String
+    let inboxItemId: String?
+}
+
+struct MacCompanionInboxItem: Identifiable, Decodable {
+    let id: String
+    let sourceDeviceId: String?
+    let targetDeviceId: String
+    let message: String
+    let status: String
+    let createdAt: Date
+}
+
+struct MacSchedulerStatus: Decodable {
+    let paused: Bool
+    let taskCount: Int
 }
 
 enum StringValue: Decodable {

@@ -32,6 +32,7 @@
 		066585E7FD94E94941CF2C42 /* QueuedWorkerDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */; };
 		06A5DACB817081E2494DFE28 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */; };
 		BE343C14C33A3CC2840FE110 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5026C2DCCA67A14750A8D666 /* ChatView.swift */; };
+		444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */; };
 		1FB785815C2689B178843AF3 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E7435856265940623C75FA /* DevicesView.swift */; };
 		27B68A25AB10DAFCD690096D /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A49B3B62D36EB724CA2F2EC /* HomeView.swift */; };
 		D0BE0573EDC28A6FE4DC42D9 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D0B7485BC90F86D0B5A8315 /* MainTabView.swift */; };
@@ -81,6 +82,7 @@
 		D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Support/QueuedWorkerDisplay.swift"; sourceTree = "<group>"; };
 		07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/AgentsView.swift"; sourceTree = "<group>"; };
 		5026C2DCCA67A14750A8D666 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ChatView.swift"; sourceTree = "<group>"; };
+		D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompanionInboxView.swift"; sourceTree = "<group>"; };
 		D5E7435856265940623C75FA /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/DevicesView.swift"; sourceTree = "<group>"; };
 		2A49B3B62D36EB724CA2F2EC /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/HomeView.swift"; sourceTree = "<group>"; };
 		6D0B7485BC90F86D0B5A8315 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MainTabView.swift"; sourceTree = "<group>"; };
@@ -145,6 +147,7 @@
 				D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */,
 				07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */,
 				5026C2DCCA67A14750A8D666 /* ChatView.swift */,
+				D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */,
 				D5E7435856265940623C75FA /* DevicesView.swift */,
 				2A49B3B62D36EB724CA2F2EC /* HomeView.swift */,
 				6D0B7485BC90F86D0B5A8315 /* MainTabView.swift */,
@@ -306,6 +309,7 @@
 				066585E7FD94E94941CF2C42 /* QueuedWorkerDisplay.swift in Sources */,
 				06A5DACB817081E2494DFE28 /* AgentsView.swift in Sources */,
 				BE343C14C33A3CC2840FE110 /* ChatView.swift in Sources */,
+				444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */,
 				1FB785815C2689B178843AF3 /* DevicesView.swift in Sources */,
 				27B68A25AB10DAFCD690096D /* HomeView.swift in Sources */,
 				D0BE0573EDC28A6FE4DC42D9 /* MainTabView.swift in Sources */,

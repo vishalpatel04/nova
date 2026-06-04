@@ -2,13 +2,14 @@ import SwiftUI
 
 struct GenieChatView: View {
     @EnvironmentObject private var appState: MacAppState
-    @StateObject private var speech = MacSpeechController()
+    @StateObject private var voice = VoiceRuntime()
     @FocusState private var inputFocused: Bool
 
     var compact: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
+            statusBar
             messageList
             if let error = appState.chatError {
                 errorBanner(error)
@@ -22,11 +23,50 @@ struct GenieChatView: View {
                 Task { await startVoiceCapture() }
             }
         }
-        .onChange(of: speech.transcript) { _, transcript in
-            if speech.isListening == false, !transcript.isEmpty {
+        .onChange(of: voice.liveTranscript) { _, transcript in
+            if !voice.isRecording, !transcript.isEmpty {
                 appState.chatDraft = transcript
             }
         }
+        .onChange(of: appState.chatDraft) { _, draft in
+            appState.persistChatSnapshot()
+        }
+    }
+
+    private var statusBar: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(appState.providerHealthy ? Color.green : Color.orange)
+                .frame(width: 6, height: 6)
+            Text(appState.providerModeLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if appState.isChatStreaming {
+                ProgressView().controlSize(.mini)
+                Text("Streaming…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Button("Stop") { appState.cancelActiveChatStream() }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+            } else if voice.isRecording {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.red)
+                    .font(.caption2)
+                Text("Recording…")
+                    .font(.caption2)
+                Button("Cancel") { Task { await voice.cancelRecording() } }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+            } else if voice.isSpeaking {
+                Text("Speaking…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 
     private var messageList: some View {
@@ -43,7 +83,7 @@ struct GenieChatView: View {
                         ChatBubble(message: message)
                             .id(message.id)
                     }
-                    if appState.isChatSending {
+                    if appState.isChatSending && !appState.isChatStreaming {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("NOVA is thinking…")
@@ -58,10 +98,17 @@ struct GenieChatView: View {
             }
             .frame(minHeight: compact ? 120 : 260, maxHeight: compact ? 180 : .infinity)
             .onChange(of: appState.chatMessages.count) { _, _ in
-                if let last = appState.chatMessages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
+                scrollToBottom(proxy: proxy)
             }
+            .onChange(of: appState.chatMessages.last?.content) { _, _ in
+                scrollToBottom(proxy: proxy)
+            }
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        if let last = appState.chatMessages.last {
+            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
         }
     }
 
@@ -70,8 +117,8 @@ struct GenieChatView: View {
             Button {
                 Task { await toggleVoice() }
             } label: {
-                Image(systemName: speech.isListening ? "mic.fill" : "mic")
-                    .foregroundStyle(speech.isListening ? .red : .primary)
+                Image(systemName: voice.isRecording ? "mic.fill" : "mic")
+                    .foregroundStyle(voice.isRecording ? .red : .primary)
             }
             .buttonStyle(.plain)
             .help("Push-to-talk")
@@ -91,7 +138,10 @@ struct GenieChatView: View {
 
             Button("Send") { sendMessage() }
                 .keyboardShortcut(.return, modifiers: [])
-                .disabled(appState.isChatSending || appState.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    appState.isChatSending
+                        || appState.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
         }
         .padding(10)
         .background(Color.black.opacity(0.15))
@@ -114,9 +164,8 @@ struct GenieChatView: View {
     }
 
     private func toggleVoice() async {
-        if speech.isListening {
-            speech.stop()
-            let transcript = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if voice.isRecording {
+            let transcript = await voice.finishPushToTalk()
             if !transcript.isEmpty {
                 appState.chatDraft = transcript
                 await appState.sendChatMessage(transcript)
@@ -127,13 +176,13 @@ struct GenieChatView: View {
     }
 
     private func startVoiceCapture() async {
-        let granted = await speech.requestPermissions()
+        let granted = await voice.preparePermissions()
         guard granted else {
             appState.chatError = "Speech or microphone permission denied."
             return
         }
         do {
-            try speech.toggleListening()
+            try await voice.startPushToTalk()
         } catch {
             appState.chatError = error.localizedDescription
         }
@@ -146,12 +195,13 @@ private struct ChatBubble: View {
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 24) }
-            Text(message.content)
+            Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
                 .font(.caption)
                 .padding(10)
                 .foregroundStyle(foreground)
                 .background(background)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .opacity(message.isStreaming ? 0.92 : 1)
             if message.role != .user { Spacer(minLength: 24) }
         }
     }

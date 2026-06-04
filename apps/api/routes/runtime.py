@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.auth import require_roles
 from apps.api.deps import get_db_session
+from apps.api.services.companion import CompanionInboxService
 from apps.api.services.runtime import AutomationService, ChatSessionService
 from nova_core.auth.principal import Principal
 from nova_core.models.enums import TokenState
@@ -15,6 +16,7 @@ from nova_core.models.orm import (
     AutomationRun,
     ChatMessageRecord,
     ChatSession,
+    CompanionInboxItem,
     Device,
     ScheduledTask,
 )
@@ -24,6 +26,7 @@ from nova_core.schemas.api import (
     AutomationRunResponse,
     ChatMessageRecordResponse,
     ChatSessionResponse,
+    CompanionInboxItemResponse,
     CompanionPromptRequest,
     CompanionPromptResponse,
     ProviderHealthResponse,
@@ -68,6 +71,25 @@ async def list_chat_sessions(
     svc = ChatSessionService(session)
     sessions = await svc.list_sessions(principal)
     return [_session_response(s, []) for s in sessions]
+
+
+@router.get("/chat/sessions/latest", response_model=ChatSessionResponse)
+async def get_latest_chat_session(
+    principal: Annotated[Principal, Depends(require_roles("client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> ChatSessionResponse:
+    svc = ChatSessionService(session)
+    chat_session = await svc.get_latest_session(principal)
+    if chat_session is None:
+        from nova_core.schemas.errors import NotFoundError
+
+        raise NotFoundError("ChatSession", "latest")
+    messages = await session.execute(
+        select(ChatMessageRecord)
+        .where(ChatMessageRecord.session_id == chat_session.id)
+        .order_by(ChatMessageRecord.created_at)
+    )
+    return _session_response(chat_session, list(messages.scalars().all()))
 
 
 @router.get("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
@@ -161,6 +183,7 @@ async def companion_prompt(
 
         raise UnauthorizedError("Target device is revoked")
 
+    inbox_svc = CompanionInboxService(session)
     svc = ChatSessionService(session)
     chat_session = await svc.get_or_create(principal, None, title="Companion Prompt")
     message = await svc.append_message(
@@ -170,11 +193,75 @@ async def companion_prompt(
         intent="remote_prompt",
         routing={"target_device_id": body.target_device_id},
     )
+    inbox_item = await inbox_svc.enqueue_prompt(
+        principal,
+        message=body.message,
+        target_device_id=body.target_device_id,
+        session_id=chat_session.id,
+        message_id=message.id,
+    )
     await session.commit()
     return CompanionPromptResponse(
         status="queued",
         session_id=chat_session.id,
         message_id=message.id,
+        inbox_item_id=inbox_item.id,
+    )
+
+
+@router.get("/companion/inbox", response_model=list[CompanionInboxItemResponse])
+async def companion_inbox(
+    principal: Annotated[Principal, Depends(require_roles("client"))],
+    session: AsyncSession = Depends(get_db_session),
+    device_id: str | None = None,
+) -> list[CompanionInboxItemResponse]:
+    inbox_svc = CompanionInboxService(session)
+    items = await inbox_svc.list_inbox(principal, device_id=device_id)
+    return [_inbox_item_response(item) for item in items]
+
+
+@router.post(
+    "/companion/inbox/{item_id}/delivered",
+    response_model=CompanionInboxItemResponse,
+)
+async def companion_inbox_delivered(
+    item_id: str,
+    principal: Annotated[Principal, Depends(require_roles("client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> CompanionInboxItemResponse:
+    inbox_svc = CompanionInboxService(session)
+    item = await inbox_svc.mark_delivered(principal, item_id)
+    await session.commit()
+    return _inbox_item_response(item)
+
+
+@router.post(
+    "/companion/inbox/{item_id}/read",
+    response_model=CompanionInboxItemResponse,
+)
+async def companion_inbox_read(
+    item_id: str,
+    principal: Annotated[Principal, Depends(require_roles("client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> CompanionInboxItemResponse:
+    inbox_svc = CompanionInboxService(session)
+    item = await inbox_svc.mark_read(principal, item_id)
+    await session.commit()
+    return _inbox_item_response(item)
+
+
+def _inbox_item_response(item: CompanionInboxItem) -> CompanionInboxItemResponse:
+    return CompanionInboxItemResponse(
+        id=item.id,
+        source_device_id=item.source_device_id,
+        target_device_id=item.target_device_id,
+        message=item.message,
+        status=item.status,
+        session_id=item.session_id,
+        message_id=item.message_id,
+        created_at=item.created_at,
+        delivered_at=item.delivered_at,
+        read_at=item.read_at,
     )
 
 

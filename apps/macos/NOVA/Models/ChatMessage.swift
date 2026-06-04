@@ -8,22 +8,25 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     }
 
     let id: UUID
-    let role: Role
-    let content: String
+    var role: Role
+    var content: String
     let timestamp: Date
-    let blocked: Bool
+    var blocked: Bool
+    var isStreaming: Bool
 
     init(
         id: UUID = UUID(),
         role: Role,
         content: String,
         timestamp: Date = Date(),
-        blocked: Bool = false
+        blocked: Bool = false,
+        isStreaming: Bool = false
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.blocked = blocked
+        self.isStreaming = isStreaming
     }
 }

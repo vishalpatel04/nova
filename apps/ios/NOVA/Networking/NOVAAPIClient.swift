@@ -139,6 +139,23 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(CompanionPromptResponse.self, from: data)
     }
 
+    func fetchCompanionInbox(deviceId: String?) async throws -> [CompanionInboxItem] {
+        var path = "/api/v1/companion/inbox"
+        if let deviceId { path += "?device_id=\(deviceId)" }
+        let (data, _) = try await request(path: path)
+        return try decoder.decode([CompanionInboxItem].self, from: data)
+    }
+
+    func fetchLatestChatSession() async throws -> ChatSessionDetail {
+        let (data, _) = try await request(path: "/api/v1/chat/sessions/latest")
+        return try decoder.decode(ChatSessionDetail.self, from: data)
+    }
+
+    func markCompanionInboxRead(itemId: String) async throws -> CompanionInboxItem {
+        let (data, _) = try await request(path: "/api/v1/companion/inbox/\(itemId)/read", method: "POST")
+        return try decoder.decode(CompanionInboxItem.self, from: data)
+    }
+
     func fetchMission(id: String) async throws -> MissionDetail {
         let (data, _) = try await request(path: "/api/v1/missions/\(id)")
         return try decoder.decode(MissionDetail.self, from: data)
@@ -263,6 +280,26 @@ struct CompanionPromptResponse: Decodable {
     let status: String
     let sessionId: String
     let messageId: String
+    let inboxItemId: String?
+}
+
+struct CompanionInboxItem: Decodable, Identifiable {
+    let id: String
+    let message: String
+    let status: String
+    let createdAt: Date
+}
+
+struct ChatSessionDetail: Decodable {
+    let id: String
+    let title: String
+    let messages: [ChatSessionMessage]
+}
+
+struct ChatSessionMessage: Decodable {
+    let role: String
+    let content: String
+    let blocked: Bool
 }
 
 struct PairingClaimResponse: Decodable {

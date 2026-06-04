@@ -264,3 +264,36 @@ class CompanionPromptResponse(BaseModel):
     status: str
     session_id: str
     message_id: str
+    inbox_item_id: str | None = None
+
+
+class CompanionInboxItemResponse(BaseModel):
+    id: str
+    source_device_id: str | None = None
+    target_device_id: str
+    message: str
+    status: str
+    session_id: str | None = None
+    message_id: str | None = None
+    created_at: datetime
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+
+
+class ChatStreamCancelResponse(BaseModel):
+    stream_id: str
+    cancelled: bool
+
+
+class SchedulerStatusResponse(BaseModel):
+    paused: bool
+    task_count: int
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SchedulerTickResponse(BaseModel):
+    executed: bool
+    paused: bool
+    task_count: int
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    timestamp: str

@@ -20,6 +20,7 @@
 		4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86229821ED7D22D66EDF6200 /* MacAppState.swift */; };
 		32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */; };
 		AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */; };
+		79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB55D0EC448543D6089692EC /* ChatStreamClient.swift */; };
 		C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */; };
 		4DDA3696DB3A42A0565AED19 /* MacTimelineMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */; };
 		5836E9DC87EEDBAAC29C7C4D /* NOVAAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855290EB11176FD2E8DC935F /* NOVAAPIClient.swift */; };
@@ -37,6 +38,7 @@
 		72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD58ED0B55426D518B017B98 /* CompactChatView.swift */; };
 		718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */; };
 		06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */; };
+		444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */; };
 		05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */; };
 		E24175191E986238B69E408E /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */; };
 		30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E03F452820A0994B02DB56E /* MacDevicesView.swift */; };
@@ -46,7 +48,10 @@
 		52A1B451E491E55D4B91319D /* MenuBarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */; };
 		CB7540759032FB16FB944CAD /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */; };
 		758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */; };
+		CF5AD2EB429331F0CB77138F /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2121C9974740E13D3031FEE6 /* SessionListView.swift */; };
+		D1154151644D4118FB9153EB /* AVFoundationVoiceAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */; };
 		000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */; };
+		F93B4D777549383DE42284AE /* VoiceRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -74,6 +79,7 @@
 		86229821ED7D22D66EDF6200 /* MacAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacAppState.swift"; sourceTree = "<group>"; };
 		82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ChatMessage.swift"; sourceTree = "<group>"; };
 		8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVAGenieApp.swift"; sourceTree = "<group>"; };
+		CB55D0EC448543D6089692EC /* ChatStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/ChatStreamClient.swift"; sourceTree = "<group>"; };
 		5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/MacMissionStreamClient.swift"; sourceTree = "<group>"; };
 		3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/MacTimelineMerger.swift"; sourceTree = "<group>"; };
 		855290EB11176FD2E8DC935F /* NOVAAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/NOVAAPIClient.swift"; sourceTree = "<group>"; };
@@ -91,6 +97,7 @@
 		DD58ED0B55426D518B017B98 /* CompactChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactChatView.swift"; sourceTree = "<group>"; };
 		55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactNOVAWindowRootView.swift"; sourceTree = "<group>"; };
 		AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactPairingView.swift"; sourceTree = "<group>"; };
+		D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompanionInboxView.swift"; sourceTree = "<group>"; };
 		BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/GenieChatView.swift"; sourceTree = "<group>"; };
 		BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacAgentsView.swift"; sourceTree = "<group>"; };
 		4E03F452820A0994B02DB56E /* MacDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacDevicesView.swift"; sourceTree = "<group>"; };
@@ -100,7 +107,10 @@
 		D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MenuBarRootView.swift"; sourceTree = "<group>"; };
 		D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MenuBarView.swift"; sourceTree = "<group>"; };
 		71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/NovaOrbStateMachine.swift"; sourceTree = "<group>"; };
+		2121C9974740E13D3031FEE6 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/SessionListView.swift"; sourceTree = "<group>"; };
+		448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/AVFoundationVoiceAdapter.swift"; sourceTree = "<group>"; };
 		0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceInterfaces.swift"; sourceTree = "<group>"; };
+		AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceRuntime.swift"; sourceTree = "<group>"; };
 		2EB7B1BD755DF7F2FB5F8392 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EF0182DF85A7CD0319333F24 /* NOVAGenie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NOVAGenie.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -141,6 +151,7 @@
 				86229821ED7D22D66EDF6200 /* MacAppState.swift */,
 				82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */,
 				8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */,
+				CB55D0EC448543D6089692EC /* ChatStreamClient.swift */,
 				5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */,
 				3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */,
 				855290EB11176FD2E8DC935F /* NOVAAPIClient.swift */,
@@ -158,6 +169,7 @@
 				DD58ED0B55426D518B017B98 /* CompactChatView.swift */,
 				55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */,
 				AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */,
+				D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */,
 				BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */,
 				BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */,
 				4E03F452820A0994B02DB56E /* MacDevicesView.swift */,
@@ -167,7 +179,10 @@
 				D12A3EE7F9F592FE0C16C706 /* MenuBarRootView.swift */,
 				D9A40B62440C01AF12F21AC8 /* MenuBarView.swift */,
 				71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */,
+				2121C9974740E13D3031FEE6 /* SessionListView.swift */,
+				448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */,
 				0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */,
+				AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */,
 				2EB7B1BD755DF7F2FB5F8392 /* Info.plist */,
 			);
 			path = NOVA;
@@ -306,6 +321,7 @@
 				4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */,
 				32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */,
 				AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */,
+				79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */,
 				C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */,
 				4DDA3696DB3A42A0565AED19 /* MacTimelineMerger.swift in Sources */,
 				5836E9DC87EEDBAAC29C7C4D /* NOVAAPIClient.swift in Sources */,
@@ -323,6 +339,7 @@
 				72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */,
 				718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */,
 				06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */,
+				444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */,
 				05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */,
 				E24175191E986238B69E408E /* MacAgentsView.swift in Sources */,
 				30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */,
@@ -332,7 +349,10 @@
 				52A1B451E491E55D4B91319D /* MenuBarRootView.swift in Sources */,
 				CB7540759032FB16FB944CAD /* MenuBarView.swift in Sources */,
 				758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */,
+				CF5AD2EB429331F0CB77138F /* SessionListView.swift in Sources */,
+				D1154151644D4118FB9153EB /* AVFoundationVoiceAdapter.swift in Sources */,
 				000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */,
+				F93B4D777549383DE42284AE /* VoiceRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

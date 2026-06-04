@@ -12,13 +12,18 @@ final class AppState: ObservableObject {
     @Published var isPaired: Bool
     @Published var isLoading = false
     @Published var globalError: String?
+    @Published var activeChatSessionId: String?
+    @Published var companionTargetDeviceId: String?
 
     let api = NOVAAPIClient.shared
+
+    var pairedDeviceId: String? { NovaDeviceIdentity.resolvedDeviceId() }
 
     init() {
         hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_complete")
         apiBaseURL = UserDefaults.standard.string(forKey: "api_base_url") ?? "http://localhost:8000"
         isPaired = KeychainStore.loadResolved() != nil
+        companionTargetDeviceId = UserDefaults.standard.string(forKey: "companion_target_device_id")
         api.baseURL = apiBaseURL
     }
 
@@ -35,6 +40,24 @@ final class AppState: ObservableObject {
 
     func refreshPairingState() {
         isPaired = KeychainStore.loadResolved() != nil
+        if isPaired {
+            Task { await restoreLatestSession() }
+        }
+    }
+
+    func setCompanionTargetDeviceId(_ deviceId: String) {
+        companionTargetDeviceId = deviceId
+        UserDefaults.standard.set(deviceId, forKey: "companion_target_device_id")
+    }
+
+    func restoreLatestSession() async {
+        guard isPaired else { return }
+        do {
+            let session = try await api.fetchLatestChatSession()
+            activeChatSessionId = session.id
+        } catch {
+            // No backend session yet.
+        }
     }
 
     func requestMicrophonePermission() async {

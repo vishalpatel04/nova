@@ -16,7 +16,10 @@ struct MenuBarView: View {
             footer
         }
         .frame(width: 360)
-        .task { await appState.pollWorkerHealth() }
+        .task {
+            await appState.pollWorkerHealth()
+            await appState.refreshRuntimeStatus()
+        }
     }
 
     private var header: some View {
@@ -30,6 +33,7 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            ProviderStatusBadge(healthy: appState.providerHealthy, mode: appState.providerModeLabel)
             WorkerHealthBadge(health: appState.workerHealth)
         }
         .padding()
@@ -51,6 +55,21 @@ struct MenuBarView: View {
             .frame(width: 120)
         }
         .padding(8)
+    }
+}
+
+struct ProviderStatusBadge: View {
+    let healthy: Bool
+    let mode: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(healthy ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+            Text(mode)
+                .font(.caption2)
+        }
     }
 }
 

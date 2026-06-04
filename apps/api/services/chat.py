@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from nova_core.models.enums import MissionStatus
 from nova_core.models.orm import Mission
 from nova_core.providers.router import ProviderConfig, ProviderRouter
 from nova_core.providers.runtime import InferenceRequest, ProviderRuntime, token_usage_dict
+from nova_core.providers.stream_context import StreamCancelToken
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
 from nova_core.tools.code_runtime import CodeRuntime
@@ -147,6 +149,200 @@ class ChatService:
         )
         await self._persist_assistant(sessions, chat_session, response)
         return response
+
+    async def stream_message(
+        self,
+        *,
+        message: str,
+        principal: Principal,
+        session_id: str | None = None,
+        cancel: StreamCancelToken | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        text = message.strip()
+        sessions = ChatSessionService(self.session)
+        if not text:
+            yield {"event": "error", "data": {"message": "Please enter a message."}}
+            return
+
+        chat_session = await sessions.get_or_create(principal, session_id, title=self._title(text))
+        await sessions.append_message(chat_session, role="user", content=text)
+        yield {
+            "event": "session",
+            "data": {
+                "session_id": chat_session.id,
+                "stream_id": cancel.stream_id if cancel else None,
+            },
+        }
+
+        if self._policy.is_unsafe_request_text(text):
+            await self._audit_blocked(principal, text, reason="unsafe_keyword")
+            response = self._blocked_response(session_id=chat_session.id)
+            async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        intent, args = self._parse_intent(text)
+        routing = self._router.route(text, intent=intent)
+
+        if intent == "help":
+            response = self._response(
+                HELP_TEXT, intent=intent, routing=routing, session_id=chat_session.id
+            )
+            async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        if intent == "blocked":
+            await self._audit_blocked(principal, text, reason="blocked_intent")
+            response = self._blocked_response(session_id=chat_session.id)
+            async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        handler = {
+            "system_status": self._system_status,
+            "devices": self._connected_devices,
+            "worker_status": self._worker_status,
+            "recent_missions": self._recent_missions,
+            "create_system_status_mission": self._create_system_status_mission,
+            "capabilities": self._worker_capabilities,
+            "list_directory": self._list_directory,
+            "read_file": self._read_file,
+            "ripgrep_search": self._ripgrep_search,
+            "repo_analysis": self._repo_analysis,
+            "explain_code": self._explain_code,
+            "patch_plan": self._patch_plan,
+        }.get(intent)
+
+        if handler:
+            body = await handler(principal, args)
+            if body.startswith(BLOCKED_MESSAGE):
+                response = self._response(
+                    body,
+                    intent="blocked",
+                    routing=routing,
+                    blocked=True,
+                    session_id=chat_session.id,
+                )
+            else:
+                await self._maybe_audit_command(principal, intent, args, body)
+                response = self._response(
+                    body,
+                    intent=intent,
+                    routing=routing,
+                    session_id=chat_session.id,
+                )
+            async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        content_parts: list[str] = []
+        inference_request = InferenceRequest(prompt=text, intent=intent, stream=True)
+        async for chunk in self._provider_runtime.stream(inference_request, cancel=cancel):
+            if cancel and cancel.cancelled:
+                yield {"event": "cancelled", "data": {}}
+                await self._persist_partial_assistant(
+                    sessions,
+                    chat_session,
+                    "".join(content_parts),
+                    intent="general",
+                    routing=routing,
+                    cancelled=True,
+                )
+                return
+            content_parts.append(chunk)
+            yield {"event": "token", "data": {"delta": chunk}}
+
+        content = "".join(content_parts).strip() or self._provider_runtime._default_help()
+        usage = {
+            "provider": "local",
+            "model": "streamed",
+            "input_tokens": self._provider_runtime._estimate_tokens(text),
+            "output_tokens": self._provider_runtime._estimate_tokens(content),
+            "mode": "stream",
+            "fallback_used": False,
+            "error": None,
+        }
+        response = self._response(
+            content,
+            intent="general",
+            routing=routing,
+            session_id=chat_session.id,
+            token_usage=usage,
+        )
+        await self._persist_assistant(sessions, chat_session, response)
+        yield {
+            "event": "done",
+            "data": {
+                "intent": response["intent"],
+                "blocked": response["blocked"],
+                "session_id": chat_session.id,
+                "token_usage": usage,
+                "routing": response.get("routing"),
+            },
+        }
+
+    async def _emit_full_response(
+        self,
+        sessions: ChatSessionService,
+        chat_session: Any,
+        response: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        body = str(response["response"])
+        chunk_size = 24
+        for index in range(0, len(body), chunk_size):
+            yield {"event": "token", "data": {"delta": body[index : index + chunk_size]}}
+        await self._persist_assistant(sessions, chat_session, response)
+        yield {
+            "event": "done",
+            "data": {
+                "intent": response.get("intent", "general"),
+                "blocked": bool(response.get("blocked", False)),
+                "session_id": response.get("session_id"),
+                "token_usage": response.get("token_usage"),
+                "routing": response.get("routing"),
+            },
+        }
+
+    async def _persist_partial_assistant(
+        self,
+        sessions: ChatSessionService,
+        chat_session: Any,
+        content: str,
+        *,
+        intent: str,
+        routing: Any | None,
+        cancelled: bool,
+    ) -> None:
+        if not content.strip():
+            return
+        await sessions.append_message(
+            chat_session,
+            role="assistant",
+            content=content,
+            intent=intent,
+            blocked=False,
+            routing={
+                "cancelled": cancelled,
+                "provider": routing.provider.value if routing else None,
+                "mode": routing.mode if routing else None,
+            }
+            if routing
+            else {"cancelled": cancelled},
+        )
+        await self.session.commit()
 
     def _parse_intent(self, text: str) -> tuple[str, dict[str, str]]:
         lowered = text.lower().strip()
