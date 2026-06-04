@@ -252,11 +252,23 @@ final class HotkeyManagerTests: XCTestCase {
         XCTAssertTrue(events.contains("nova_hotkey_registration_failed"))
     }
 
+    private func isolatedUserDefaults() -> UserDefaults {
+        let suiteName = "NOVAGenieTests.State.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
     private func testAppState(
         hotkey: GlobalHotkeyManager? = nil,
         compactWindowCoordinator: CompactWindowCoordinating? = nil
     ) -> MacAppState {
-        let state = MacAppState(compactWindowCoordinator: compactWindowCoordinator ?? FakeCompactWindowCoordinator())
+        let defaults = isolatedUserDefaults()
+        let state = MacAppState(
+            compactWindowCoordinator: compactWindowCoordinator ?? FakeCompactWindowCoordinator(),
+            userDefaults: defaults,
+            keychainService: "com.nova.macos.tests.\(UUID().uuidString)"
+        )
         if let hotkey {
             state.hotkey = hotkey
         }

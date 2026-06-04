@@ -31,7 +31,7 @@ final class MacPairingPoller: ObservableObject {
                     statusMessage = status.message
                     if stateMachine.phase == .retrievingToken {
                         let token = try await api.retrievePairingToken(pairingId: pairingId, deviceId: deviceId)
-                        try api.saveToken(token)
+                        try api.saveToken(token, deviceId: deviceId)
                         stateMachine.applyStatus("claimed", tokenReady: false)
                         statusMessage = "Paired successfully"
                         onToken(token)

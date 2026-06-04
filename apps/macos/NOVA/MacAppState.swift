@@ -22,8 +22,12 @@ final class MacAppState: ObservableObject {
     let api = NOVAAPIClient.shared
     @Published var hotkey = GlobalHotkeyManager()
     @Published var summonListen = false
+    @Published private(set) var pairedDeviceId: String?
     let compactWindowCoordinator: CompactWindowCoordinating
     let menuBarCoordinator: MenuBarCoordinator
+    private let userDefaults: UserDefaults
+    private let keychainService: String
+    private let legacyKeychainService: String
 
     enum VoiceMode: String, CaseIterable {
         case primeOnly = "prime_only"
@@ -60,13 +64,20 @@ final class MacAppState: ObservableObject {
 
     init(
         compactWindowCoordinator: CompactWindowCoordinating? = nil,
-        menuBarCoordinator: MenuBarCoordinator? = nil
+        menuBarCoordinator: MenuBarCoordinator? = nil,
+        userDefaults: UserDefaults = .standard,
+        keychainService: String = NovaDeviceIdentity.productionService,
+        legacyKeychainService: String = NovaDeviceIdentity.legacyService
     ) {
         self.compactWindowCoordinator = compactWindowCoordinator ?? CompactWindowCoordinator()
         self.menuBarCoordinator = menuBarCoordinator ?? MenuBarCoordinator()
-        apiBaseURL = UserDefaults.standard.string(forKey: "api_base_url") ?? "http://localhost:8000"
-        isPaired = KeychainStore.load() != nil
+        self.userDefaults = userDefaults
+        self.keychainService = keychainService
+        self.legacyKeychainService = legacyKeychainService
+        apiBaseURL = userDefaults.string(forKey: "api_base_url") ?? "http://localhost:8000"
+        isPaired = false
         api.baseURL = apiBaseURL
+        bootstrapAuthFromKeychain()
         NotificationCenter.default.addObserver(
             forName: .novaHotkeySummon,
             object: nil,
@@ -85,7 +96,29 @@ final class MacAppState: ObservableObject {
 
     func startApplication() {
         NovaHotkeyTelemetry.emit("nova_app_started")
+        bootstrapAuthFromKeychain()
         menuBarCoordinator.initialize(appState: self)
+    }
+
+    func bootstrapAuthFromKeychain() {
+        let lookup = NovaAuthBootstrap.lookupToken(
+            userDefaults: userDefaults,
+            keychainService: keychainService,
+            legacyService: legacyKeychainService
+        )
+        applyAuthLookup(lookup)
+    }
+
+    private func applyAuthLookup(_ lookup: KeychainTokenLookup) {
+        if lookup.token != nil {
+            pairedDeviceId = lookup.deviceId ?? lookup.keychainAccount
+            isPaired = true
+            compactWindowMode = .chat
+            NovaHotkeyTelemetry.emit("nova_auth_state_authenticated")
+        } else {
+            pairedDeviceId = lookup.deviceId
+            isPaired = false
+        }
     }
 
     func requestInitialWindowOpen() {
@@ -116,10 +149,7 @@ final class MacAppState: ObservableObject {
     }
 
     func refreshPairing() {
-        isPaired = KeychainStore.load() != nil
-        if isPaired && compactWindowMode == .pairing {
-            compactWindowMode = .chat
-        }
+        bootstrapAuthFromKeychain()
     }
 
     func pollWorkerHealth() async {

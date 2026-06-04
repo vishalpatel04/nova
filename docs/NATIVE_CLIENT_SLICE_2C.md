@@ -2,7 +2,7 @@
 
 ## Pairing polling
 
-Clients poll `GET /api/v1/pairing/{pairing_id}/status` with bounded exponential backoff, then call `POST /api/v1/pairing/{pairing_id}/token` once when `token_ready` is true. Tokens are stored in Keychain; no manual paste.
+Clients poll `GET /api/v1/pairing/{pairing_id}/status` with bounded exponential backoff, then call `POST /api/v1/pairing/{pairing_id}/token` once when `token_ready` is true. Tokens are stored in Keychain (`com.nova.macos` + `DEVICE_ID` account); manual CLI store is supported. Startup emits `nova_token_lookup_*` and transitions to chat when a token is found.
 
 ## macOS Mission Room stream
 

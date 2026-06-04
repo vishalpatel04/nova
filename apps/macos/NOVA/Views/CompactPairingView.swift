@@ -5,7 +5,8 @@ struct CompactPairingView: View {
     @StateObject private var poller = MacPairingPoller()
     @State private var pairingCode = ""
     @State private var deviceName = "My Mac"
-    @State private var deviceId = "mac-genie-\(UUID().uuidString.prefix(8))"
+    @State private var deviceId = NovaDeviceIdentity.resolvedDeviceId()
+        ?? "mac-genie-\(UUID().uuidString.prefix(8))"
     @State private var pairingId = ""
 
     var body: some View {
@@ -77,14 +78,14 @@ struct CompactPairingView: View {
                 deviceType: "macos_genie"
             )
             pairingId = response.pairingId
+            let resolvedDeviceId = response.deviceId.isEmpty ? deviceId : response.deviceId
+            deviceId = resolvedDeviceId
             if let token = response.token, !token.isEmpty {
-                try appState.api.saveToken(token)
+                try appState.api.saveToken(token, deviceId: resolvedDeviceId)
                 appState.refreshPairing()
-                appState.compactWindowMode = .chat
             } else if response.status == "pending" {
-                poller.start(pairingId: pairingId, deviceId: deviceId) { _ in
+                poller.start(pairingId: pairingId, deviceId: resolvedDeviceId) { _ in
                     appState.refreshPairing()
-                    appState.compactWindowMode = .chat
                 }
             }
         } catch {

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FFDFA5D240B77F6DB0247EC7 /* AuthBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5667140CF930EB345612AED /* AuthBootstrapTests.swift */; };
 		A1913563AAC1108B1F01182B /* HotkeyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */; };
 		D051731B9C3A741A8B921532 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */; };
 		86CB72251DFB1A5D356A64D1 /* MacTimelineMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */; };
@@ -23,6 +24,8 @@
 		9EEB1FECB38EBBE235CDE4CC /* MacPairingPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8125450A8A248E73E1923BB /* MacPairingPoller.swift */; };
 		1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */; };
 		56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F86071251C558F09518A2A7F /* KeychainStore.swift */; };
+		539A4ED575CDF9B341D7BCF4 /* NovaAuthBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */; };
+		FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */; };
 		4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */; };
 		67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */; };
 		7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */; };
@@ -44,6 +47,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B5667140CF930EB345612AED /* AuthBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AuthBootstrapTests.swift"; sourceTree = "<group>"; };
 		FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HotkeyManagerTests.swift"; sourceTree = "<group>"; };
 		76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStoreTests.swift"; sourceTree = "<group>"; };
 		D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacTimelineMergerTests.swift"; sourceTree = "<group>"; };
@@ -52,6 +56,7 @@
 		99FD66CC7F6B5D03036794EB /* PairingPollStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PairingPollStateMachineTests.swift"; sourceTree = "<group>"; };
 		8D767E1614BA0AB55F34730B /* StreamStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamStatusTests.swift"; sourceTree = "<group>"; };
 		0CEB413FCA0203BF1CCEFFAB /* NOVAGenieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NOVAGenieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5667140CF930EB345612AED /* AuthBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AuthBootstrapTests.swift"; sourceTree = "<group>"; };
 		FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HotkeyManagerTests.swift"; sourceTree = "<group>"; };
 		76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStoreTests.swift"; sourceTree = "<group>"; };
 		D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacTimelineMergerTests.swift"; sourceTree = "<group>"; };
@@ -69,6 +74,8 @@
 		F8125450A8A248E73E1923BB /* MacPairingPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/MacPairingPoller.swift"; sourceTree = "<group>"; };
 		9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/PairingPollStateMachine.swift"; sourceTree = "<group>"; };
 		F86071251C558F09518A2A7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/KeychainStore.swift"; sourceTree = "<group>"; };
+		483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaAuthBootstrap.swift"; sourceTree = "<group>"; };
+		B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaDeviceIdentity.swift"; sourceTree = "<group>"; };
 		2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/CompactWindowCoordinator.swift"; sourceTree = "<group>"; };
 		1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/GlobalHotkeyManager.swift"; sourceTree = "<group>"; };
 		05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/LaunchAtLoginHelper.swift"; sourceTree = "<group>"; };
@@ -132,6 +139,8 @@
 				F8125450A8A248E73E1923BB /* MacPairingPoller.swift */,
 				9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */,
 				F86071251C558F09518A2A7F /* KeychainStore.swift */,
+				483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */,
+				B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */,
 				2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */,
 				1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */,
 				05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */,
@@ -168,6 +177,7 @@
 		2A3B55781C145E381DB7B8EC /* NOVAGenieTests */ = {
 			isa = PBXGroup;
 			children = (
+				B5667140CF930EB345612AED /* AuthBootstrapTests.swift */,
 				FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */,
 				76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */,
 				D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */,
@@ -291,6 +301,8 @@
 				9EEB1FECB38EBBE235CDE4CC /* MacPairingPoller.swift in Sources */,
 				1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */,
 				56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */,
+				539A4ED575CDF9B341D7BCF4 /* NovaAuthBootstrap.swift in Sources */,
+				FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */,
 				4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */,
 				67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */,
 				7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */,
@@ -317,6 +329,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FFDFA5D240B77F6DB0247EC7 /* AuthBootstrapTests.swift in Sources */,
 				A1913563AAC1108B1F01182B /* HotkeyManagerTests.swift in Sources */,
 				D051731B9C3A741A8B921532 /* KeychainStoreTests.swift in Sources */,
 				86CB72251DFB1A5D356A64D1 /* MacTimelineMergerTests.swift in Sources */,

@@ -24,10 +24,32 @@ final class NOVAAPIClient: ObservableObject {
         self.baseURL = baseURL
     }
 
-    var deviceToken: String? { KeychainStore.load() }
+    var deviceToken: String? {
+        NovaAuthBootstrap.lookupToken().token
+    }
 
-    func saveToken(_ token: String) throws { try KeychainStore.save(token: token) }
-    func clearToken() { KeychainStore.delete() }
+    func saveToken(_ token: String, deviceId: String) throws {
+        NovaDeviceIdentity.persistDeviceId(deviceId)
+        try KeychainStore.save(
+            token: token,
+            account: deviceId,
+            service: NovaDeviceIdentity.productionService
+        )
+        KeychainStore.delete(
+            account: NovaDeviceIdentity.legacyAccount,
+            service: NovaDeviceIdentity.legacyService
+        )
+    }
+
+    func clearToken() {
+        if let deviceId = NovaDeviceIdentity.resolvedDeviceId() {
+            KeychainStore.delete(account: deviceId, service: NovaDeviceIdentity.productionService)
+        }
+        KeychainStore.delete(
+            account: NovaDeviceIdentity.legacyAccount,
+            service: NovaDeviceIdentity.legacyService
+        )
+    }
 
     private func request(path: String, method: String = "GET", body: Encodable? = nil, requiresAuth: Bool = true) async throws -> Data {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
