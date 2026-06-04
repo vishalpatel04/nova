@@ -6,11 +6,11 @@ Accepted — Slice 2C
 
 ## Context
 
-Summon NOVA from any app with ⌥ Space without requiring Accessibility trust.
+Summon NOVA from any app with ⌥ S without requiring Accessibility trust.
 
 ## Decision
 
-Use Carbon `RegisterEventHotKey` + `InstallEventHandler` in `GlobalHotkeyManager`. Default: Option + Space. Toggle and conflict messaging in Settings.
+Use Carbon `RegisterEventHotKey` + `InstallEventHandler` in `GlobalHotkeyManager`. Default: Option + S (`kVK_ANSI_S`). Toggle and conflict messaging in Settings.
 
 ## Alternatives considered
 

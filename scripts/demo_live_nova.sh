@@ -45,7 +45,7 @@ section "7. Client pairing"
 echo "Open iOS NOVA or macOS NOVAGenie → enter pairing code → automatic approval polling"
 
 section "8. system_status mission"
-echo "Use Chat orb or macOS hotkey (⌥ Space) to create a system_status mission"
+echo "Use Chat orb or macOS hotkey (⌥ S) to create a system_status mission"
 
 section "9. Mission Room timeline"
 echo "Open Mission Room — verify live / reconnecting / degraded badge"

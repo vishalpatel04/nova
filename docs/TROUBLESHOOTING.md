@@ -19,7 +19,7 @@ Pairing attempts are limited per source IP and per code. Wait for the TTL window
 
 ## macOS hotkey conflict
 
-If **⌥ Space** does not summon NOVA, another app may own the combination. Disable hotkey in NOVA Settings or change modifiers (future slice).
+If **⌥ S** does not summon NOVA, another app may own the combination. Disable hotkey in NOVA Settings or change modifiers (future slice).
 
 ## Redis unavailable
 

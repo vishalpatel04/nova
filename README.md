@@ -45,7 +45,7 @@ make test         # run pytest
 
 ## Slice 2C — Native hardening
 
-Automatic pairing polling, macOS Mission Room WebSocket, **⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
+Automatic pairing polling, macOS Mission Room WebSocket, **⌥ S** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
 
 ```bash
 bash scripts/demo_live_nova.sh

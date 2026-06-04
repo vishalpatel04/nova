@@ -24,7 +24,7 @@ final class GlobalHotkeyManager: ObservableObject {
     private var eventHandlerRef: EventHandlerRef?
     private let hotKeyID = EventHotKeyID(signature: OSType(0x4E4F5641), id: 1)
 
-    static let defaultKeyCode: UInt32 = UInt32(kVK_Space)
+    static let defaultKeyCode: UInt32 = UInt32(kVK_ANSI_S)
     static let defaultModifiers: UInt32 = UInt32(optionKey)
 
     init() {

@@ -10,7 +10,7 @@ Clients poll `GET /api/v1/pairing/{pairing_id}/status` with bounded exponential 
 
 ## Global hotkey
 
-Default **⌥ Space** via Carbon `RegisterEventHotKey` (no Accessibility permission). Configurable enable toggle in Settings; conflict reported in UI.
+Default **⌥ S** via Carbon `RegisterEventHotKey` (no Accessibility permission). Configurable enable toggle in Settings; conflict reported in UI.
 
 ## Launch at login
 

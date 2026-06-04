@@ -27,7 +27,7 @@ struct MacSettingsView: View {
                 Section("Global hotkey") {
                     Toggle("Enable summon hotkey", isOn: $appState.hotkey.isEnabled)
                         .onChange(of: appState.hotkey.isEnabled) { _, _ in appState.hotkey.applyRegistration() }
-                    Text("Default: ⌥ Space — opens NOVA and starts tap-to-talk")
+                    Text("Default: ⌥ S — opens NOVA and starts tap-to-talk")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let err = appState.hotkey.registrationError {
