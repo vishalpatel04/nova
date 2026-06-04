@@ -28,5 +28,7 @@
     </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>NOVA uses the microphone for voice interaction.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>NOVA transcribes your voice locally using Apple Speech.</string>
 </dict>
 </plist>

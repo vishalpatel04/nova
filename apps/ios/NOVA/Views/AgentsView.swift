@@ -1,32 +1,44 @@
 import SwiftUI
 
 struct AgentsView: View {
-    @State private var agents = MockData.agents
+    @EnvironmentObject private var appState: AppState
+    @State private var agents: [Agent] = []
+    @State private var errorMessage: String?
 
     var body: some View {
-        List(agents) { agent in
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(DesignTokens.agentColor(for: agent.colourToken))
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Text(String(agent.displayName.prefix(1)))
-                            .font(.headline.bold())
-                            .foregroundStyle(.white)
-                    )
-                VStack(alignment: .leading) {
-                    Text(agent.displayName)
-                        .font(.headline)
-                    Text(agent.description ?? agent.role)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        Group {
+            if agents.isEmpty {
+                ContentUnavailableView(
+                    "Agents",
+                    systemImage: "person.3",
+                    description: Text(errorMessage ?? "Loading commanders…")
+                )
+            } else {
+                List(agents) { agent in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(agent.displayName).font(.headline)
+                        Text(agent.role.replacingOccurrences(of: "_", with: " "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
         .navigationTitle("Agents")
+        .refreshable { await load() }
+        .task { await load() }
     }
-}
 
-#Preview {
-    NavigationStack { AgentsView() }
+    private func load() async {
+        guard appState.isPaired else {
+            errorMessage = "Pair device to load agents."
+            return
+        }
+        do {
+            agents = try await appState.api.fetchAgents()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

@@ -18,6 +18,7 @@ struct MainTabView: View {
             NavigationStack {
                 List {
                     NavigationLink("Devices") { DevicesView() }
+                    NavigationLink("Pairing") { PairingView() }
                     NavigationLink("Settings") { SettingsView() }
                 }
                 .navigationTitle("More")

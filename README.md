@@ -43,6 +43,17 @@ make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
 
+## Slice 2B — Native live clients
+
+iPhone and macOS apps pair via the API, store tokens in Keychain, stream mission timelines over WebSocket tickets, and support tap-to-talk voice missions. See [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md).
+
+```bash
+# Regenerate Xcode projects after adding Swift files
+python3 scripts/generate_xcode_projects.py
+cd apps/ios && xcodebuild -project NOVA.xcodeproj -scheme NOVA -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+cd apps/macos && xcodebuild -project NOVAGenie.xcodeproj -scheme NOVAGenie build
+```
+
 ## Slice 2B — Worker command transport
 
 Redis Streams command dispatch with PostgreSQL authority. See [Scalable Worker Dispatch](docs/SCALABLE_WORKER_DISPATCH.md).
@@ -57,6 +68,7 @@ Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), work
 - [Auth & Pairing](docs/AUTH_AND_PAIRING.md)
 - [Realtime Events](docs/REALTIME_EVENTS.md)
 - [Worker Connection](docs/WORKER_CONNECTION.md)
+- [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Slice 2A Plan](docs/SLICE_2A_BACKEND_LIVE_NERVOUS_SYSTEM_PLAN.md)
 

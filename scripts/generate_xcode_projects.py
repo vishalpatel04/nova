@@ -30,7 +30,7 @@ def generate_pbxproj(
     sources_phase_ids = []
 
     for sf in swift_files:
-        rel = sf.relative_to(app_dir.parent)
+        rel = sf.relative_to(app_dir)
         ref_id = uid(f"ref-{rel}")
         build_id = uid(f"build-{rel}")
         file_refs.append(
@@ -108,7 +108,7 @@ def generate_pbxproj(
 \t\t{nova_group} /* NOVA */ = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir.parent)}')} /* {sf.name} */," for sf in swift_files)}
+{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir)}')} /* {sf.name} */," for sf in swift_files)}
 \t\t\t\t{plist_ref} /* Info.plist */,
 \t\t\t);
 \t\t\tpath = NOVA;

@@ -16,6 +16,7 @@ struct MenuBarView: View {
             footer
         }
         .frame(width: 360)
+        .task { await appState.pollWorkerHealth() }
     }
 
     private var header: some View {

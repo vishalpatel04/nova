@@ -1,46 +1,42 @@
 import SwiftUI
 
 struct MacSettingsView: View {
-    @EnvironmentObject var appState: MacAppState
+    @EnvironmentObject private var appState: MacAppState
+    @State private var pairingCode = ""
+    @State private var pastedToken = ""
 
     var body: some View {
         TabView {
             Form {
-                Section("Connection") {
-                    TextField("API URL", text: $appState.apiBaseURL)
+                TextField("API URL", text: $appState.apiBaseURL)
+                Button("Save URL") { appState.updateBaseURL(appState.apiBaseURL) }
+                LabeledContent("Paired", value: appState.isPaired ? "Yes" : "No")
+                SecureField("Paste device token", text: $pastedToken)
+                Button("Save token") {
+                    try? appState.api.saveToken(pastedToken)
+                    appState.refreshPairing()
                 }
-                Section("Worker") {
-                    Picker("Health", selection: $appState.workerHealth) {
-                        Text("Unknown").tag(MacAppState.WorkerHealth.unknown)
-                        Text("Healthy").tag(MacAppState.WorkerHealth.healthy)
-                        Text("Degraded").tag(MacAppState.WorkerHealth.degraded)
-                        Text("Offline").tag(MacAppState.WorkerHealth.offline)
+                Picker("Voice mode", selection: $appState.voiceMode) {
+                    ForEach(MacAppState.VoiceMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
                 }
-                Section("Launch") {
-                    Toggle("Launch at Login", isOn: .constant(false))
-                        .disabled(true)
-                    Text("Launch-at-login ready — enable in Slice 2")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Wake word: pluggable provider reserved for a future slice. No always-on daemon in 2B.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .padding()
             .tabItem { Label("General", systemImage: "gear") }
 
-            MacMissionRoomView()
-                .tabItem { Label("Missions", systemImage: "list.bullet") }
+            MacDevicesView()
+                .tabItem { Label("Devices", systemImage: "desktopcomputer") }
 
             MacAgentsView()
                 .tabItem { Label("Agents", systemImage: "person.3") }
 
-            MacDevicesView()
-                .tabItem { Label("Devices", systemImage: "desktopcomputer") }
+            MacMissionRoomView()
+                .tabItem { Label("Missions", systemImage: "list.bullet") }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 480, height: 400)
     }
-}
-
-#Preview {
-    MacSettingsView()
-        .environmentObject(MacAppState())
 }
