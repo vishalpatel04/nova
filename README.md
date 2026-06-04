@@ -43,7 +43,14 @@ make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
 
-## Slice 2A — Live backend
+## Slice 2B — Worker command transport
+
+Redis Streams command dispatch with PostgreSQL authority. See [Scalable Worker Dispatch](docs/SCALABLE_WORKER_DISPATCH.md).
+
+```bash
+# Worker uses WS ticket + command_pickup_ack / command_result
+make worker
+```
 
 Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), worker WebSocket, honest mission queuing.
 

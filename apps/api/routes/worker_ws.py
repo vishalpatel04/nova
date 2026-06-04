@@ -62,6 +62,15 @@ async def worker_websocket(websocket: WebSocket) -> None:
 
         await websocket.send_json({"type": "connected", "device_id": device_id})
 
+        from apps.api.services.worker_dispatch import WorkerDispatchService
+
+        dispatch_svc = WorkerDispatchService(session, settings)
+        commands = await dispatch_svc.pending_commands_for_worker(
+            device_id, principal.device_type or "macos_worker"
+        )
+        if commands:
+            await websocket.send_json({"type": "commands_assigned", "commands": commands})
+
         assigned = await mission_svc.assign_queued_missions(device_id)
         if assigned:
             await websocket.send_json({"type": "missions_assigned", "assignments": assigned})
@@ -139,6 +148,34 @@ async def _handle_worker_message(
             command_id=command_id,
         )
         await websocket.send_json({"type": "mission_pickup_acknowledged", "mission_id": mission_id})
+
+    elif msg_type == "command_pickup_ack":
+        command_id = msg.get("command_id")
+        if not command_id:
+            await websocket.send_json({"type": "error", "message": "command_id is required"})
+            return
+        from apps.api.services.worker_dispatch import WorkerDispatchService
+
+        dispatch_svc = WorkerDispatchService(session, get_settings())
+        await dispatch_svc.acknowledge_pickup(device_id=device_id, command_id=command_id)
+        await websocket.send_json({"type": "command_pickup_acknowledged", "command_id": command_id})
+
+    elif msg_type == "command_result":
+        command_id = msg.get("command_id")
+        if not command_id:
+            await websocket.send_json({"type": "error", "message": "command_id is required"})
+            return
+        from apps.api.services.worker_dispatch import WorkerDispatchService
+
+        dispatch_svc = WorkerDispatchService(session, get_settings())
+        await dispatch_svc.record_result(
+            device_id=device_id,
+            command_id=command_id,
+            success=bool(msg.get("success", True)),
+            result_payload=msg.get("result"),
+            error_message=msg.get("error"),
+        )
+        await websocket.send_json({"type": "command_result_acknowledged", "command_id": command_id})
 
     else:
         await websocket.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})

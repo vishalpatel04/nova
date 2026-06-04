@@ -360,6 +360,32 @@ class QueuedMission(Base):
     command_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
 
 
+class WorkerCommandAssignment(Base):
+    __tablename__ = "worker_command_assignments"
+
+    command_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    mission_id: Mapped[str | None] = mapped_column(
+        ForeignKey("missions.id"), nullable=True, index=True
+    )
+    command_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    routing_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    target_worker_class: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    assigned_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    stream_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stream_entry_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class WebSocketTicket(Base):
     __tablename__ = "websocket_tickets"
 

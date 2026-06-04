@@ -29,6 +29,7 @@ from nova_core.models.orm import (  # noqa: F401 — register models
     TimelineEvent,
     TokenRevocation,
     User,
+    WorkerCommandAssignment,
 )
 
 config = context.config

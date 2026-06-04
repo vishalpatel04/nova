@@ -80,3 +80,15 @@ events:
   redis_stream_max_len: 10000
   replay_batch_size: 100
   degraded_mode_on_redis_failure: true
+
+worker_dispatch:
+  stale_assignment_seconds: 300
+  max_command_attempts: 3
+  retry_delay_seconds: 5
+  read_only_commands:
+    - system_status
+    - hostname
+    - uptime
+    - operating_system_version
+    - cpu_architecture
+    - configured_capabilities

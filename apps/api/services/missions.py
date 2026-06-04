@@ -218,6 +218,15 @@ class MissionService:
                 required_device_types=["macos_worker", "linux_worker", "cloud_worker"],
             )
         )
+        from apps.api.services.worker_dispatch import WorkerDispatchService
+
+        dispatch = WorkerDispatchService(self.session, self.settings)
+        assignment = await dispatch.create_mission_command(
+            mission_id=mission.id,
+            mission_type=mission.mission_type,
+            required_device_types=["macos_worker", "linux_worker", "cloud_worker"],
+        )
+        await dispatch.dispatch_assignment(assignment)
         await self.session.commit()
         return await self.get_mission(mission.id)
 

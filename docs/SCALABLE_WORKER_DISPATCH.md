@@ -1,38 +1,89 @@
 # Scalable Worker Dispatch
 
-Slice 2A uses PostgreSQL as the durable source of truth for worker-dependent mission assignment.
+Slice 2B Milestone A adds **Redis Streams-backed worker command transport** with **PostgreSQL as the durable source of truth**.
 
-## Durable state
+## Architecture
 
-`queued_missions` records:
+```mermaid
+sequenceDiagram
+    participant API
+    participant PG as PostgreSQL
+    participant Redis as Redis Streams
+    participant Worker
 
-- mission id
-- required worker device types
-- assigned worker device id
-- deterministic command id
-- assigned timestamp
-- acknowledged timestamp
+    API->>PG: worker_command_assignments (pending)
+    API->>Redis: XADD nova:worker-class:{type}:commands
+    API->>PG: status=dispatched, stream_entry_id
+    Worker->>API: WS connect (ticket auth)
+    API->>Worker: commands_assigned
+    Worker->>API: command_pickup_ack
+    API->>PG: status=picked_up (idempotent)
+    Worker->>Worker: typed read-only handler
+    Worker->>API: command_result
+    API->>PG: status=completed, mission workflow
+    API->>Redis: mission timeline XADD
+```
 
-Mission creation records `queued_waiting_for_worker` when no eligible worker is online. The timeline records the queued state honestly.
+## Durable state (`worker_command_assignments`)
 
-## Assignment flow
+| Field | Purpose |
+|-------|---------|
+| `command_id` | Primary idempotency key |
+| `mission_id` | Optional linked mission |
+| `command_type` | Typed read-only command |
+| `routing_mode` | `device` or `worker_class` |
+| `target_device_id` / `target_worker_class` | Routing targets |
+| `status` | `pending` → `dispatched` → `picked_up` → `completed` / `failed` |
+| `stream_key` / `stream_entry_id` | Redis transport reference |
+| `attempt_count` / `max_attempts` | Bounded retry |
 
-1. Client creates a worker-dependent mission.
-2. API stores the mission and `queued_missions` row in PostgreSQL.
-3. Worker connects with a one-time WebSocket ticket.
-4. API assigns unacknowledged queued missions to the worker and sends `missions_assigned`.
-5. Worker sends `mission_pickup_ack` with `mission_id` and `command_id`.
-6. API marks the mission `running` and records a `mission_started` timeline event.
+Mission queue rows (`queued_missions`) remain linked via `command_id` for pickup acknowledgement.
 
-Duplicate reconnects and duplicate pickup acknowledgements reuse the same command id and do not create duplicate `mission_started` events.
+## Redis Streams (transport only)
 
-## Redis Streams
+- Per device: `nova:worker:{device_id}:commands`
+- Per class: `nova:worker-class:{worker_class}:commands`
 
-Redis Streams are used for mission timeline fanout. The durable worker assignment state is PostgreSQL-backed in Slice 2A. A future dispatch worker can add Redis command streams per worker/class using the existing `command_id` as the idempotency key; PostgreSQL remains authoritative for redelivery and recovery.
+If Redis is unavailable, assignments stay in PostgreSQL with `stream_entry_id` null and timeline reports **degraded** streaming — same honesty model as mission events.
 
-## Recovery behavior
+## Read-only commands
 
-- API restart: queued/assigned/unacknowledged missions remain in PostgreSQL.
-- Worker disconnect: unacknowledged assignments can be re-sent on reconnect.
-- Duplicate messages: `command_id` and `acknowledged_at` make pickup acknowledgement idempotent.
-- Redis unavailable: timeline events remain durable in PostgreSQL and streaming reports degraded mode.
+| Command | Handler output |
+|---------|----------------|
+| `system_status` | Hostname, OS, arch, uptime, capabilities |
+| `hostname` | Node name |
+| `uptime` | Uptime seconds |
+| `operating_system_version` | Platform string |
+| `cpu_architecture` | Machine arch |
+| `configured_capabilities` | Capability report |
+
+No shell execution. Dangerous tools remain disabled in policy.
+
+## Recovery
+
+| Scenario | Behavior |
+|----------|----------|
+| API restart | Pending/dispatched rows survive in PostgreSQL |
+| Worker reconnect | `pending_commands_for_worker` re-dispatches and notifies over WS |
+| Duplicate pickup | Same `command_id` → single `picked_up` transition |
+| Duplicate result | Completed assignment ignores repeat results |
+| Stale assignment | After `stale_assignment_seconds`, reset to `pending` and re-dispatch |
+| Revoked worker | No new commands; unacknowledged queue rows released |
+
+## WebSocket messages
+
+**Server → worker:** `commands_assigned`, `missions_assigned` (legacy pickup path)
+
+**Worker → server:** `command_pickup_ack`, `command_result`, `mission_pickup_ack`
+
+## Policy (`config/policies.yaml`)
+
+```yaml
+worker_dispatch:
+  stale_assignment_seconds: 300
+  max_command_attempts: 3
+```
+
+## Multi-replica API
+
+Any API instance may `XADD` to Redis. Workers read streams and acknowledge on any connected instance. PostgreSQL assignment state prevents duplicate side effects.

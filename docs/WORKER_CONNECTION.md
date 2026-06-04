@@ -13,6 +13,8 @@
 {"type": "register", "name": "...", "device_type": "macos_worker", "capabilities": [...]}
 {"type": "heartbeat", "payload": {"uptime_seconds": 120, "architecture": "arm64"}}
 {"type": "mission_pickup_ack", "mission_id": "...", "command_id": "..."}
+{"type": "command_pickup_ack", "command_id": "..."}
+{"type": "command_result", "command_id": "...", "success": true, "result": {...}}
 {"type": "ping"}
 ```
 
@@ -22,11 +24,21 @@
 {"type": "connected", "device_id": "..."}
 {"type": "registered", "device_id": "..."}
 {"type": "heartbeat_ack", "timestamp": "..."}
+{"type": "commands_assigned", "commands": [{"command_id": "...", "command_type": "system_status", "mission_id": "..."}]}
 {"type": "missions_assigned", "assignments": [{"mission_id": "...", "command_id": "..."}]}
-{"type": "mission_pickup_acknowledged", "mission_id": "..."}
+{"type": "command_pickup_acknowledged", "command_id": "..."}
+{"type": "command_result_acknowledged", "command_id": "..."}
 ```
 
-## Reconnect
+## Command transport
+
+Read-only worker commands are dispatched via **Redis Streams** (`nova:worker-class:{type}:commands` or per-device streams). PostgreSQL `worker_command_assignments` is authoritative; see [SCALABLE_WORKER_DISPATCH.md](SCALABLE_WORKER_DISPATCH.md).
+
+On connect the worker:
+
+1. Obtains a one-time WebSocket ticket (`POST /api/v1/pairing/ws-tickets`).
+2. Receives `commands_assigned` for pending stream-backed commands.
+3. Sends `command_pickup_ack` then `command_result` after typed handler execution.
 
 Worker uses bounded exponential backoff with jitter (1s → 60s max).
 Queued missions are durable in PostgreSQL. On reconnect, the API re-sends unacknowledged assignments for that worker; duplicate pickup acknowledgements are idempotent and do not create duplicate `mission_started` timeline events.

@@ -402,6 +402,11 @@ class PairingService:
             queued.picked_up_by_device_id = None
             queued.command_id = None
 
+        from apps.api.services.worker_dispatch import WorkerDispatchService
+
+        dispatch = WorkerDispatchService(self.session, self.settings)
+        await dispatch.release_assignments_for_revoked_device(device_id)
+
         await record_audit_event(
             self.session,
             actor_type=principal.principal_type,
