@@ -80,7 +80,9 @@ struct PairingView: View {
             )
             pairingId = response.pairingId
             if let token = response.token, !token.isEmpty {
-                try appState.api.saveToken(token)
+                let resolvedDeviceId = response.deviceId.isEmpty ? deviceId : response.deviceId
+                deviceId = resolvedDeviceId
+                try appState.api.saveToken(token, deviceId: resolvedDeviceId)
                 appState.refreshPairingState()
                 appState.completeOnboarding()
             } else if response.status == "pending" {

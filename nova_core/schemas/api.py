@@ -164,3 +164,14 @@ class ApiErrorDetail(BaseModel):
 
 class ApiErrorResponse(BaseModel):
     error: ApiErrorDetail
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+
+
+class ChatResponse(BaseModel):
+    response: str
+    intent: str = "general"
+    blocked: bool = False
+    routing: dict[str, Any] | None = None

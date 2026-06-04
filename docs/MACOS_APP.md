@@ -19,6 +19,17 @@ security add-generic-password -U -s com.nova.macos -a "$DEVICE_ID" -w "$TOKEN"
 
 The app also reads `DEVICE_ID` from the environment when `nova_device_id` is not set yet, and can discover a lone Keychain entry on `com.nova.macos`. On launch, NOVA logs `nova_token_lookup_*` and `nova_auth_diagnostic` (token value never logged).
 
+## Phase 3A chat
+
+Interactive chat with text input, Send, Enter/Shift+Enter, mic push-to-talk, session message history, and `POST /api/v1/chat` command routing. See [Phase 3A Automation Foundation](../docs/PHASE_3A_AUTOMATION_FOUNDATION.md).
+
+```bash
+export DEVICE_ID=arth-mac-client
+bash scripts/run-novagenie-local.sh
+```
+
+Provider API keys: **Settings → Providers** (Keychain `com.nova.macos.providers` only).
+
 ## Features (Slice 2C)
 
 - Pairing status polling

@@ -98,7 +98,15 @@ class WorkerWebSocketClient:
         command_type = cmd.get("command_type", "")
         await self._send({"type": "command_pickup_ack", "command_id": command_id})
         try:
-            result = execute_read_only_command(command_type)
+            payload = cmd.get("payload")
+            if isinstance(payload, str):
+                import json as _json
+
+                payload = _json.loads(payload)
+            result = execute_read_only_command(
+                command_type,
+                payload if isinstance(payload, dict) else None,
+            )
             await self._send(
                 {
                     "type": "command_result",

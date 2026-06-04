@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from apps.api.deps import AppState, set_app_state
 from apps.api.routes import (
+    chat_router,
     core_router,
     devices_router,
     pairing_router,
@@ -116,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(core_router, prefix="/api/v1")
+    app.include_router(chat_router, prefix="/api/v1")
     app.include_router(pairing_router, prefix="/api/v1")
     app.include_router(devices_router, prefix="/api/v1")
     app.include_router(timeline_router, prefix="/api/v1")

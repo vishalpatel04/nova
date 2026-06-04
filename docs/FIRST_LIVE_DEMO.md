@@ -19,10 +19,11 @@ Run `bash scripts/demo_live_nova.sh` for a guided checklist. This document adds 
 7. **Worker token:** worker or script calls `POST /api/v1/pairing/{id}/token` with `device_id`
 8. **Store worker token:** save the token in Keychain with `security add-generic-password -U -s com.nova.worker -a "$DEVICE_ID" -w "$WORKER_TOKEN"`; `.env` `WORKER_TOKEN` is local-development fallback only
 9. **Client claim:** iPhone/macOS app claims client code — polls `GET /api/v1/pairing/{id}/status` until `token_ready`, then retrieves token once
-10. **Mission:** tap NOVA orb → `system_status` mission
-11. **Mission Room:** open mission → WebSocket ticket stream with `after_sequence` reconnect
-12. **Disconnect worker:** `make worker-status` then stop worker — create mission → queued UI
-13. **Reconnect:** `make worker-restart` — mission completes
-14. **Revoke:** admin revokes device — pairing retrieval and API calls fail
+10. **NOVAGenie chat (Phase 3A):** `export DEVICE_ID=arth-mac-client && bash scripts/run-novagenie-local.sh` — authenticated chat opens; try `system status`, `connected devices`, `help`
+11. **Mission:** tap NOVA orb or type in chat → `system status` / `create system status mission`
+12. **Mission Room:** open mission → WebSocket ticket stream with `after_sequence` reconnect
+13. **Disconnect worker:** `make worker-status` then stop worker — create mission → queued UI
+14. **Reconnect:** `make worker-restart` — mission completes
+15. **Revoke:** admin revokes device — pairing retrieval and API calls fail
 
 Tokens are never printed in full by `demo_live_nova.sh`.

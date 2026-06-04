@@ -9,10 +9,8 @@ struct MenuBarView: View {
             Divider()
             if appState.shouldShowPairing {
                 CompactPairingView()
-            } else if appState.isExpanded {
-                ExpandedChatView()
             } else {
-                CompactChatView()
+                GenieChatView(compact: !appState.isExpanded)
             }
             Divider()
             footer

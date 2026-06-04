@@ -51,11 +51,20 @@ final class NOVAAPIClient: ObservableObject {
         )
     }
 
-    private func request(path: String, method: String = "GET", body: Encodable? = nil, requiresAuth: Bool = true) async throws -> Data {
+    private func request(
+        path: String,
+        method: String = "GET",
+        body: Encodable? = nil,
+        requiresAuth: Bool = true,
+        extraHeaders: [String: String] = [:]
+    ) async throws -> Data {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (key, value) in extraHeaders {
+            req.setValue(value, forHTTPHeaderField: key)
+        }
         if requiresAuth {
             guard let token = deviceToken else { throw URLError(.userAuthenticationRequired) }
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -83,14 +92,27 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacSystemStatus.self, from: data)
     }
 
-    func createMission(type: String, title: String) async throws -> MacMissionDetail {
+    func createMission(type: String, title: String, idempotencyKey: String? = nil) async throws -> MacMissionDetail {
         struct Body: Encodable { let missionType: String; let title: String }
+        var headers: [String: String] = [:]
+        if let idempotencyKey { headers["Idempotency-Key"] = idempotencyKey }
         let data = try await request(
             path: "/api/v1/missions",
             method: "POST",
-            body: Body(missionType: type, title: title)
+            body: Body(missionType: type, title: title),
+            extraHeaders: headers
         )
         return try decoder.decode(MacMissionDetail.self, from: data)
+    }
+
+    func sendChat(message: String) async throws -> MacChatResponse {
+        struct Body: Encodable { let message: String }
+        let data = try await request(
+            path: "/api/v1/chat",
+            method: "POST",
+            body: Body(message: message)
+        )
+        return try decoder.decode(MacChatResponse.self, from: data)
     }
 
     func fetchTimeline(missionId: String, afterSequence: Int = 0) async throws -> MacTimelineResponse {
@@ -169,3 +191,8 @@ struct MacPairingStatus: Decodable {
     let tokenReady: Bool
 }
 struct MacPairingTokenResponse: Decodable { let deviceId, token, status: String }
+struct MacChatResponse: Decodable {
+    let response: String
+    let intent: String
+    let blocked: Bool
+}

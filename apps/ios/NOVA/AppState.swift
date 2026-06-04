@@ -18,7 +18,7 @@ final class AppState: ObservableObject {
     init() {
         hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_complete")
         apiBaseURL = UserDefaults.standard.string(forKey: "api_base_url") ?? "http://localhost:8000"
-        isPaired = KeychainStore.load() != nil
+        isPaired = KeychainStore.loadResolved() != nil
         api.baseURL = apiBaseURL
     }
 
@@ -34,7 +34,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshPairingState() {
-        isPaired = KeychainStore.load() != nil
+        isPaired = KeychainStore.loadResolved() != nil
     }
 
     func requestMicrophonePermission() async {

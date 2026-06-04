@@ -99,3 +99,14 @@ worker_dispatch:
     - operating_system_version
     - cpu_architecture
     - configured_capabilities
+    - list_directory
+    - read_file
+    - ripgrep_search
+
+safe_filesystem:
+  allowed_roots:
+    - ~/Projects/nova
+    - ~/Desktop/NOVA-Safe-Test
+  max_read_bytes: 65536
+  max_directory_entries: 200
+  max_search_matches: 50

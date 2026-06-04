@@ -25,14 +25,25 @@ final class NOVAAPIClient: ObservableObject {
         self.baseURL = baseURL
     }
 
-    var deviceToken: String? { KeychainStore.load() }
+    var deviceToken: String? { KeychainStore.loadResolved() }
 
-    func saveToken(_ token: String) throws {
-        try KeychainStore.save(token: token)
+    func saveToken(_ token: String, deviceId: String) throws {
+        NovaDeviceIdentity.persistDeviceId(deviceId)
+        try KeychainStore.save(token: token, account: deviceId)
+        KeychainStore.delete(
+            account: NovaDeviceIdentity.legacyAccount,
+            service: NovaDeviceIdentity.legacyService
+        )
     }
 
     func clearToken() {
-        KeychainStore.delete()
+        if let deviceId = NovaDeviceIdentity.resolvedDeviceId() {
+            KeychainStore.delete(account: deviceId)
+        }
+        KeychainStore.delete(
+            account: NovaDeviceIdentity.legacyAccount,
+            service: NovaDeviceIdentity.legacyService
+        )
     }
 
     private func request(

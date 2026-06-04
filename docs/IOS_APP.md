@@ -26,6 +26,18 @@ Run in Simulator: open `NOVA.xcodeproj`, select a simulator, **Run**.
 4. **Product → Run** on your device
 5. TestFlight: archive and upload when ready for beta distribution
 
+## Keychain token storage
+
+Aligned with macOS: service **`com.nova.ios`**, account = **`DEVICE_ID`** / persisted `nova_device_id`. Legacy `com.nova.ios.credentials` / `device_token` still supported.
+
+Set API base URL in **Pair Device** before claiming (avoid hardcoded localhost on physical devices — use your Mac's LAN IP).
+
+## Simulator pairing (later)
+
+1. Start API on host: `make dev`
+2. In Simulator, set Base URL to `http://127.0.0.1:8000` (or host IP)
+3. Create client pairing code via admin API, claim in app, approve, poll for token
+
 ## Pairing
 
 Claim code in **Pair Device**; app polls approval and retrieves the token automatically (no paste).

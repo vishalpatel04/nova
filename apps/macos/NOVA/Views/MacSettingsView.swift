@@ -10,6 +10,8 @@ struct MacSettingsView: View {
     @State private var pairingId = ""
     @State private var launchAtLogin = LaunchAtLoginHelper.isEnabled
     @State private var launchStatus = LaunchAtLoginHelper.statusLabel
+    @State private var providerKeyDraft = ""
+    @State private var selectedProvider = NovaProviderSettings.defaultProvider
 
     var body: some View {
         TabView {
@@ -19,6 +21,46 @@ struct MacSettingsView: View {
                 LabeledContent("Paired", value: appState.isPaired ? "Yes" : "No")
                 if let deviceId = appState.pairedDeviceId {
                     LabeledContent("Device ID", value: deviceId)
+                }
+
+                Section("Providers") {
+                    Picker("Default provider", selection: $selectedProvider) {
+                        ForEach(NovaProviderName.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .onChange(of: selectedProvider) { _, value in
+                        NovaProviderSettings.defaultProvider = value
+                    }
+                    TextField("Model name", text: Binding(
+                        get: { NovaProviderSettings.modelName },
+                        set: { NovaProviderSettings.modelName = $0 }
+                    ))
+                    TextField("Local endpoint", text: Binding(
+                        get: { NovaProviderSettings.localEndpointURL },
+                        set: { NovaProviderSettings.localEndpointURL = $0 }
+                    ))
+                    Toggle("Prefer free/local for low-level tasks", isOn: Binding(
+                        get: { NovaProviderSettings.preferFreeLocal },
+                        set: { NovaProviderSettings.preferFreeLocal = $0 }
+                    ))
+                    SecureField("API key (stored in Keychain)", text: $providerKeyDraft)
+                    HStack {
+                        Button("Save key") {
+                            guard !providerKeyDraft.isEmpty else { return }
+                            try? NovaProviderSettings.saveAPIKey(providerKeyDraft, provider: selectedProvider)
+                            providerKeyDraft = ""
+                        }
+                        Button("Clear key") {
+                            NovaProviderSettings.deleteAPIKey(provider: selectedProvider)
+                        }
+                    }
+                    Text("Key status: \(NovaProviderSettings.maskedKeyStatus(provider: selectedProvider))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Provider keys live only in macOS Keychain (service com.nova.macos.providers). Never logged.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Pair device") {

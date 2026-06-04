@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		FFDFA5D240B77F6DB0247EC7 /* AuthBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5667140CF930EB345612AED /* AuthBootstrapTests.swift */; };
+		167ADCB17CCC45F60895484F /* GenieChatStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ABDAAA2E33974E056D7BA9 /* GenieChatStateTests.swift */; };
 		A1913563AAC1108B1F01182B /* HotkeyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */; };
 		D051731B9C3A741A8B921532 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */; };
 		86CB72251DFB1A5D356A64D1 /* MacTimelineMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */; };
@@ -17,6 +18,7 @@
 		4FEE98327ED30F2CBD0E6693 /* StreamStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D767E1614BA0AB55F34730B /* StreamStatusTests.swift */; };
 		ED4BC3AE50733AD041E0099D /* MacDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */; };
 		4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86229821ED7D22D66EDF6200 /* MacAppState.swift */; };
+		32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */; };
 		AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */; };
 		C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */; };
 		4DDA3696DB3A42A0565AED19 /* MacTimelineMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */; };
@@ -26,6 +28,7 @@
 		56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F86071251C558F09518A2A7F /* KeychainStore.swift */; };
 		539A4ED575CDF9B341D7BCF4 /* NovaAuthBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */; };
 		FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */; };
+		893789EEEE25212E345CC426 /* NovaProviderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0104EB80E59A2067CD70C24C /* NovaProviderSettings.swift */; };
 		4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */; };
 		67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */; };
 		7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */; };
@@ -34,7 +37,7 @@
 		72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD58ED0B55426D518B017B98 /* CompactChatView.swift */; };
 		718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */; };
 		06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */; };
-		87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */; };
+		05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */; };
 		E24175191E986238B69E408E /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */; };
 		30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E03F452820A0994B02DB56E /* MacDevicesView.swift */; };
 		FCC1B2F76D7DB8CBD923CEA8 /* MacMissionRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */; };
@@ -48,6 +51,7 @@
 
 /* Begin PBXFileReference section */
 		B5667140CF930EB345612AED /* AuthBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AuthBootstrapTests.swift"; sourceTree = "<group>"; };
+		D5ABDAAA2E33974E056D7BA9 /* GenieChatStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GenieChatStateTests.swift"; sourceTree = "<group>"; };
 		FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HotkeyManagerTests.swift"; sourceTree = "<group>"; };
 		76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStoreTests.swift"; sourceTree = "<group>"; };
 		D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacTimelineMergerTests.swift"; sourceTree = "<group>"; };
@@ -57,6 +61,7 @@
 		8D767E1614BA0AB55F34730B /* StreamStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamStatusTests.swift"; sourceTree = "<group>"; };
 		0CEB413FCA0203BF1CCEFFAB /* NOVAGenieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NOVAGenieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5667140CF930EB345612AED /* AuthBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AuthBootstrapTests.swift"; sourceTree = "<group>"; };
+		D5ABDAAA2E33974E056D7BA9 /* GenieChatStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GenieChatStateTests.swift"; sourceTree = "<group>"; };
 		FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HotkeyManagerTests.swift"; sourceTree = "<group>"; };
 		76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeychainStoreTests.swift"; sourceTree = "<group>"; };
 		D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacTimelineMergerTests.swift"; sourceTree = "<group>"; };
@@ -67,6 +72,7 @@
 		0CEB413FCA0203BF1CCEFFAB /* NOVAGenieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NOVAGenieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Design/MacDesignTokens.swift"; sourceTree = "<group>"; };
 		86229821ED7D22D66EDF6200 /* MacAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacAppState.swift"; sourceTree = "<group>"; };
+		82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ChatMessage.swift"; sourceTree = "<group>"; };
 		8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVAGenieApp.swift"; sourceTree = "<group>"; };
 		5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/MacMissionStreamClient.swift"; sourceTree = "<group>"; };
 		3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/MacTimelineMerger.swift"; sourceTree = "<group>"; };
@@ -76,6 +82,7 @@
 		F86071251C558F09518A2A7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/KeychainStore.swift"; sourceTree = "<group>"; };
 		483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaAuthBootstrap.swift"; sourceTree = "<group>"; };
 		B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaDeviceIdentity.swift"; sourceTree = "<group>"; };
+		0104EB80E59A2067CD70C24C /* NovaProviderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaProviderSettings.swift"; sourceTree = "<group>"; };
 		2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/CompactWindowCoordinator.swift"; sourceTree = "<group>"; };
 		1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/GlobalHotkeyManager.swift"; sourceTree = "<group>"; };
 		05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/LaunchAtLoginHelper.swift"; sourceTree = "<group>"; };
@@ -84,7 +91,7 @@
 		DD58ED0B55426D518B017B98 /* CompactChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactChatView.swift"; sourceTree = "<group>"; };
 		55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactNOVAWindowRootView.swift"; sourceTree = "<group>"; };
 		AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactPairingView.swift"; sourceTree = "<group>"; };
-		1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ExpandedChatView.swift"; sourceTree = "<group>"; };
+		BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/GenieChatView.swift"; sourceTree = "<group>"; };
 		BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacAgentsView.swift"; sourceTree = "<group>"; };
 		4E03F452820A0994B02DB56E /* MacDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacDevicesView.swift"; sourceTree = "<group>"; };
 		6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacMissionRoomView.swift"; sourceTree = "<group>"; };
@@ -132,6 +139,7 @@
 			children = (
 				04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */,
 				86229821ED7D22D66EDF6200 /* MacAppState.swift */,
+				82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */,
 				8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */,
 				5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */,
 				3248076EF047CC8B8D10B5E2 /* MacTimelineMerger.swift */,
@@ -141,6 +149,7 @@
 				F86071251C558F09518A2A7F /* KeychainStore.swift */,
 				483D054200F014D9AE66B099 /* NovaAuthBootstrap.swift */,
 				B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */,
+				0104EB80E59A2067CD70C24C /* NovaProviderSettings.swift */,
 				2FC2F83C5CC7E6EE13340427 /* CompactWindowCoordinator.swift */,
 				1E6FBA0DB5354312A3C059FD /* GlobalHotkeyManager.swift */,
 				05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */,
@@ -149,7 +158,7 @@
 				DD58ED0B55426D518B017B98 /* CompactChatView.swift */,
 				55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */,
 				AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */,
-				1D684DE1F0A25BD55DB4C127 /* ExpandedChatView.swift */,
+				BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */,
 				BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */,
 				4E03F452820A0994B02DB56E /* MacDevicesView.swift */,
 				6F6AE37BF39D02F87B0494CD /* MacMissionRoomView.swift */,
@@ -178,6 +187,7 @@
 			isa = PBXGroup;
 			children = (
 				B5667140CF930EB345612AED /* AuthBootstrapTests.swift */,
+				D5ABDAAA2E33974E056D7BA9 /* GenieChatStateTests.swift */,
 				FF2CB597F28D26BA719AAD3A /* HotkeyManagerTests.swift */,
 				76B41210F229D2573E5C3E0B /* KeychainStoreTests.swift */,
 				D89B3654D7D29C523EEDE7AD /* MacTimelineMergerTests.swift */,
@@ -294,6 +304,7 @@
 			files = (
 				ED4BC3AE50733AD041E0099D /* MacDesignTokens.swift in Sources */,
 				4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */,
+				32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */,
 				AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */,
 				C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */,
 				4DDA3696DB3A42A0565AED19 /* MacTimelineMerger.swift in Sources */,
@@ -303,6 +314,7 @@
 				56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */,
 				539A4ED575CDF9B341D7BCF4 /* NovaAuthBootstrap.swift in Sources */,
 				FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */,
+				893789EEEE25212E345CC426 /* NovaProviderSettings.swift in Sources */,
 				4779E3F592926B50C02F3FA9 /* CompactWindowCoordinator.swift in Sources */,
 				67E9531E25532BA435069594 /* GlobalHotkeyManager.swift in Sources */,
 				7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */,
@@ -311,7 +323,7 @@
 				72B742C3F7846229619A51F6 /* CompactChatView.swift in Sources */,
 				718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */,
 				06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */,
-				87657C5B52B52E9E6232B8CF /* ExpandedChatView.swift in Sources */,
+				05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */,
 				E24175191E986238B69E408E /* MacAgentsView.swift in Sources */,
 				30D93DA1E7B91EDDA9D87C47 /* MacDevicesView.swift in Sources */,
 				FCC1B2F76D7DB8CBD923CEA8 /* MacMissionRoomView.swift in Sources */,
@@ -330,6 +342,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FFDFA5D240B77F6DB0247EC7 /* AuthBootstrapTests.swift in Sources */,
+				167ADCB17CCC45F60895484F /* GenieChatStateTests.swift in Sources */,
 				A1913563AAC1108B1F01182B /* HotkeyManagerTests.swift in Sources */,
 				D051731B9C3A741A8B921532 /* KeychainStoreTests.swift in Sources */,
 				86CB72251DFB1A5D356A64D1 /* MacTimelineMergerTests.swift in Sources */,

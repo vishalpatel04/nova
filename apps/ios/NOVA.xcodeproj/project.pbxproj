@@ -28,6 +28,7 @@
 		1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */; };
 		3016C7A5E2F2E1306C8E2961 /* PairingPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B488EA102B5C8313E82202 /* PairingPoller.swift */; };
 		56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F86071251C558F09518A2A7F /* KeychainStore.swift */; };
+		FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */; };
 		066585E7FD94E94941CF2C42 /* QueuedWorkerDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */; };
 		06A5DACB817081E2494DFE28 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */; };
 		BE343C14C33A3CC2840FE110 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5026C2DCCA67A14750A8D666 /* ChatView.swift */; };
@@ -76,6 +77,7 @@
 		9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/PairingPollStateMachine.swift"; sourceTree = "<group>"; };
 		A3B488EA102B5C8313E82202 /* PairingPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Pairing/PairingPoller.swift"; sourceTree = "<group>"; };
 		F86071251C558F09518A2A7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/KeychainStore.swift"; sourceTree = "<group>"; };
+		B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Security/NovaDeviceIdentity.swift"; sourceTree = "<group>"; };
 		D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Support/QueuedWorkerDisplay.swift"; sourceTree = "<group>"; };
 		07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/AgentsView.swift"; sourceTree = "<group>"; };
 		5026C2DCCA67A14750A8D666 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ChatView.swift"; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				9ED05BF66337DA2CED8F58B6 /* PairingPollStateMachine.swift */,
 				A3B488EA102B5C8313E82202 /* PairingPoller.swift */,
 				F86071251C558F09518A2A7F /* KeychainStore.swift */,
+				B3DDE3CADF37935DCB2CF0DF /* NovaDeviceIdentity.swift */,
 				D83BC4A478EFB245B8368C70 /* QueuedWorkerDisplay.swift */,
 				07AA23DBDFFC0E45AB12D261 /* AgentsView.swift */,
 				5026C2DCCA67A14750A8D666 /* ChatView.swift */,
@@ -299,6 +302,7 @@
 				1B99BDDC7859A0FED37DFBD7 /* PairingPollStateMachine.swift in Sources */,
 				3016C7A5E2F2E1306C8E2961 /* PairingPoller.swift in Sources */,
 				56EB564ADB110DE287F9E289 /* KeychainStore.swift in Sources */,
+				FAC1EF2574163B769A072FDD /* NovaDeviceIdentity.swift in Sources */,
 				066585E7FD94E94941CF2C42 /* QueuedWorkerDisplay.swift in Sources */,
 				06A5DACB817081E2494DFE28 /* AgentsView.swift in Sources */,
 				BE343C14C33A3CC2840FE110 /* ChatView.swift in Sources */,

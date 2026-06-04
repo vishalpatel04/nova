@@ -4,7 +4,10 @@ import platform
 from typing import Any
 
 from apps.worker.capabilities import capability_report, detect_capabilities
+from nova_core.tools.safe_readonly import SafeReadonlyTools
 from nova_core.worker_dispatch.commands import WorkerCommandType
+
+_safe_tools = SafeReadonlyTools()
 
 
 def _uptime_seconds() -> int:
@@ -16,9 +19,25 @@ def _uptime_seconds() -> int:
         return 0
 
 
-def execute_read_only_command(command_type: str) -> dict[str, Any]:
+def execute_read_only_command(
+    command_type: str, payload: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    payload = payload or {}
     if command_type not in {c.value for c in WorkerCommandType}:
         raise ValueError(f"Unsupported command type: {command_type}")
+
+    if command_type == WorkerCommandType.LIST_DIRECTORY.value:
+        result = _safe_tools.list_directory(str(payload.get("path", ".")))
+        return {"success": result.success, "output": result.output, "error": result.error}
+    if command_type == WorkerCommandType.READ_FILE.value:
+        result = _safe_tools.read_file(str(payload.get("path", "")))
+        return {"success": result.success, "output": result.output, "error": result.error}
+    if command_type == WorkerCommandType.RIPGREP_SEARCH.value:
+        result = _safe_tools.ripgrep_search(
+            str(payload.get("pattern", "")),
+            str(payload.get("path", ".")),
+        )
+        return {"success": result.success, "output": result.output, "error": result.error}
 
     if command_type == WorkerCommandType.SYSTEM_STATUS.value:
         report = capability_report()

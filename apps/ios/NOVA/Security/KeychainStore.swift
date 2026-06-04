@@ -2,14 +2,11 @@ import Foundation
 import Security
 
 enum KeychainStore {
-    private static let defaultService = "com.nova.ios.credentials"
-
-    static func save(token: String, account: String = "device_token", service: String? = nil) throws {
-        let svc = service ?? defaultService
+    static func save(token: String, account: String, service: String = NovaDeviceIdentity.productionService) throws {
         let data = Data(token.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: svc,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
@@ -22,11 +19,10 @@ enum KeychainStore {
         }
     }
 
-    static func load(account: String = "device_token", service: String? = nil) -> String? {
-        let svc = service ?? defaultService
+    static func load(account: String, service: String = NovaDeviceIdentity.productionService) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: svc,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -37,11 +33,18 @@ enum KeychainStore {
         return String(data: data, encoding: .utf8)
     }
 
-    static func delete(account: String = "device_token", service: String? = nil) {
-        let svc = service ?? defaultService
+    static func loadResolved(userDefaults: UserDefaults = .standard) -> String? {
+        if let deviceId = NovaDeviceIdentity.resolvedDeviceId(userDefaults: userDefaults),
+           let token = load(account: deviceId) {
+            return token
+        }
+        return load(account: NovaDeviceIdentity.legacyAccount, service: NovaDeviceIdentity.legacyService)
+    }
+
+    static func delete(account: String, service: String = NovaDeviceIdentity.productionService) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: svc,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)

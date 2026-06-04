@@ -43,6 +43,16 @@ make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
 
+## Phase 3A — Interactive chat + safe tools
+
+NOVAGenie opens authenticated into interactive chat (`POST /api/v1/chat`). Safe read-only file tools, provider routing foundation, and automation scaffolds — **no shell/write/email/n8n execution**. See [Phase 3A Automation Foundation](docs/PHASE_3A_AUTOMATION_FOUNDATION.md).
+
+```bash
+export DEVICE_ID=arth-mac-client
+bash scripts/run-novagenie-local.sh
+# Try: system status | connected devices | help
+```
+
 ## Slice 2C — Native hardening
 
 Automatic pairing polling, macOS Mission Room WebSocket, **⌃⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
@@ -79,6 +89,7 @@ Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), work
 - [Auth & Pairing](docs/AUTH_AND_PAIRING.md)
 - [Realtime Events](docs/REALTIME_EVENTS.md)
 - [Worker Connection](docs/WORKER_CONNECTION.md)
+- [Phase 3A Automation Foundation](docs/PHASE_3A_AUTOMATION_FOUNDATION.md)
 - [Native Client Slice 2C](docs/NATIVE_CLIENT_SLICE_2C.md)
 - [First Live Demo](docs/FIRST_LIVE_DEMO.md)
 - [iOS App](docs/IOS_APP.md)

@@ -10,6 +10,9 @@ class WorkerCommandType(StrEnum):
     OPERATING_SYSTEM_VERSION = "operating_system_version"
     CPU_ARCHITECTURE = "cpu_architecture"
     CONFIGURED_CAPABILITIES = "configured_capabilities"
+    LIST_DIRECTORY = "list_directory"
+    READ_FILE = "read_file"
+    RIPGREP_SEARCH = "ripgrep_search"
 
 
 READ_ONLY_COMMAND_TYPES: frozenset[str] = frozenset(WorkerCommandType)

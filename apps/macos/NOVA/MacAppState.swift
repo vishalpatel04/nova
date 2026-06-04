@@ -18,6 +18,10 @@ final class MacAppState: ObservableObject {
     @Published var isPaired: Bool
     @Published var globalError: String?
     @Published var compactWindowMode: CompactWindowMode = .chat
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var chatDraft = ""
+    @Published var isChatSending = false
+    @Published var chatError: String?
 
     let api = NOVAAPIClient.shared
     @Published var hotkey = GlobalHotkeyManager()
@@ -152,6 +156,32 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
     }
 
+    func sendChatMessage(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard isPaired else {
+            chatError = "Pair this device before chatting with NOVA."
+            return
+        }
+        chatError = nil
+        chatMessages.append(ChatMessage(role: .user, content: trimmed))
+        isChatSending = true
+        defer { isChatSending = false }
+        do {
+            let response = try await api.sendChat(message: trimmed)
+            let role: ChatMessage.Role = response.blocked ? .error : .assistant
+            chatMessages.append(
+                ChatMessage(role: role, content: response.response, blocked: response.blocked)
+            )
+            if response.blocked {
+                chatError = response.response
+            }
+        } catch {
+            chatError = error.localizedDescription
+            chatMessages.append(ChatMessage(role: .error, content: error.localizedDescription))
+        }
+    }
+
     func pollWorkerHealth() async {
         guard isPaired else { workerHealth = .unknown; return }
         do {
@@ -174,11 +204,23 @@ final class MacAppState: ObservableObject {
 final class MacSpeechController: ObservableObject {
     @Published var transcript = ""
     @Published var isListening = false
+    @Published var permissionGranted = false
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private let engine = AVAudioEngine()
     private let synthesizer = AVSpeechSynthesizer()
+
+    func requestPermissions() async -> Bool {
+        let speechStatus = await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status == .authorized)
+            }
+        }
+        let micStatus = await AVCaptureDevice.requestAccess(for: .audio)
+        permissionGranted = speechStatus && micStatus
+        return permissionGranted
+    }
 
     func speak(_ text: String, mode: MacAppState.VoiceMode) {
         guard mode != .silentOperations else { return }
