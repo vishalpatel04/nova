@@ -417,23 +417,36 @@ class WorkerDispatchService:
         return assignment
 
     async def _complete_mission_from_result(self, assignment: WorkerCommandAssignment) -> None:
-        from apps.api.services.missions import MissionService
-
         if not assignment.mission_id:
             return
-        mission_svc = MissionService(self.session, self.settings)
-        mission = await mission_svc.get_mission(assignment.mission_id)
+        result = await self.session.execute(
+            select(Mission).where(Mission.id == assignment.mission_id)
+        )
+        mission = result.scalar_one_or_none()
+        if not mission:
+            raise NotFoundError("Mission", assignment.mission_id)
         if mission.status in (
             MissionStatus.COMPLETED.value,
             MissionStatus.FAILED.value,
         ):
             return
-        try:
-            await mission_svc.execute_mission(assignment.mission_id)
-        except Exception as exc:
-            mission.status = MissionStatus.FAILED.value
-            mission.error_message = str(exc)
-            await self.session.flush()
+
+        now = utc_now()
+        if mission.started_at is None:
+            mission.started_at = assignment.picked_up_at or now
+        mission.status = MissionStatus.COMPLETED.value
+        mission.result_payload = assignment.result_payload
+        mission.completed_at = now
+        await publish_timeline_event(
+            self.session,
+            get_app_state().redis,
+            mission_id=mission.id,
+            event_type=TimelineEventType.MISSION_COMPLETED.value,
+            agent_id="nova",
+            message=f"Mission '{mission.title}' completed by worker",
+            payload={"command_id": assignment.command_id, "result": assignment.result_payload},
+        )
+        await self.session.flush()
 
     async def release_assignments_for_revoked_device(self, device_id: str) -> None:
         result = await self.session.execute(

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from apps.api.services.worker_dispatch import WorkerDispatchService
 from nova_core.models.enums import WorkerCommandStatus
-from nova_core.models.orm import WorkerCommandAssignment
+from nova_core.models.orm import Mission, WorkerCommandAssignment
 from nova_core.worker_dispatch.streams import class_stream_key, read_commands
 
 
@@ -119,6 +119,70 @@ async def test_duplicate_pickup_and_result_idempotent(
         )
         assignment = row.scalar_one()
         assert assignment.status == WorkerCommandStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_offline_worker_reconnect_lifecycle_completes_from_result(
+    auth_client: AsyncClient,
+    paired_worker_token,
+    paired_client_token,
+    db_engine,
+    test_settings,
+) -> None:
+    _client_id, client_token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {client_token}"
+    resp = await auth_client.post(
+        "/api/v1/missions",
+        json={"mission_type": "system_status", "title": "Offline worker lifecycle"},
+        headers={"Idempotency-Key": "dispatch-lifecycle-1"},
+    )
+    assert resp.status_code == 201
+    mission_id = resp.json()["id"]
+    assert resp.json()["status"] == "queued_waiting_for_worker"
+
+    device_id, _token = paired_worker_token
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        dispatch = WorkerDispatchService(session, test_settings)
+        commands = await dispatch.pending_commands_for_worker(device_id, "macos_worker")
+        assert len(commands) == 1
+        command_id = commands[0]["command_id"]
+
+        await dispatch.acknowledge_pickup(device_id=device_id, command_id=command_id)
+        mission_row = await session.execute(select(Mission).where(Mission.id == mission_id))
+        mission = mission_row.scalar_one()
+        assert mission.status == "running"
+
+        result_payload = {
+            "hostname": "test-host",
+            "os_version": "test-os",
+            "architecture": "arm64",
+            "status": "ok",
+        }
+        await dispatch.record_result(
+            device_id=device_id,
+            command_id=command_id,
+            success=True,
+            result_payload=result_payload,
+        )
+        await dispatch.record_result(
+            device_id=device_id,
+            command_id=command_id,
+            success=True,
+            result_payload=result_payload,
+        )
+
+        row = await session.execute(
+            select(WorkerCommandAssignment).where(WorkerCommandAssignment.command_id == command_id)
+        )
+        assignment = row.scalar_one()
+        assert assignment.status == WorkerCommandStatus.COMPLETED.value
+        assert assignment.result_payload == result_payload
+
+        mission_row = await session.execute(select(Mission).where(Mission.id == mission_id))
+        mission = mission_row.scalar_one()
+        assert mission.status == "completed"
+        assert mission.result_payload == result_payload
 
 
 @pytest.mark.asyncio

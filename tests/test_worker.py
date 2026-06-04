@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from apps.worker.main import WorkerDaemon
+from apps.worker.ws_client import WorkerWebSocketClient
 from nova_core.schemas.settings import WorkerSettings
 
 
@@ -21,6 +22,22 @@ def test_configured_worker_device_id_is_used() -> None:
     worker = WorkerDaemon(WorkerSettings(DEVICE_ID="configured-worker", DEVICE_NAME="Test Worker"))
 
     assert worker.device_id == "configured-worker"
+
+
+@pytest.mark.asyncio
+async def test_worker_websocket_url_uses_one_time_ticket(monkeypatch) -> None:
+    settings = WorkerSettings(
+        CONTROL_PLANE_URL="https://nova.example.test",
+        WORKER_TOKEN="nova_wrk_test",
+    )
+    client = WorkerWebSocketClient(settings, "worker-1", "Worker 1")
+
+    async def fake_ticket() -> str:
+        return "ticket-test"
+
+    monkeypatch.setattr(client, "_fetch_ws_ticket", fake_ticket)
+
+    assert await client.ws_url == "wss://nova.example.test/api/v1/ws/worker?ticket=ticket-test"
 
 
 @pytest.mark.asyncio

@@ -50,7 +50,7 @@ class WorkerWebSocketClient:
             "https://", "wss://"
         )
         ticket = await self._fetch_ws_ticket()
-        return f"{base}/api/v1/ws/worker?token={ticket}"
+        return f"{base}/api/v1/ws/worker?ticket={ticket}"
 
     def status_report(self) -> dict[str, Any]:
         return {
