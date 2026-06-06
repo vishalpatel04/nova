@@ -5,15 +5,28 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.services.approvals import ApprovalRequestService
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
 from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
 from nova_core.auth.principal import Principal
+from nova_core.capabilities.model import (
+    APPROVAL_REQUIRED_CAPABILITIES,
+    PERMANENTLY_BLOCKED_CAPABILITIES,
+    CapabilityName,
+    risk_for_capability,
+)
+from nova_core.capabilities.resolver import (
+    ActionResolution,
+    cloud_file_resolution,
+    resolve_chat_message,
+)
 from nova_core.devices.availability import get_worker_availability
 from nova_core.models.enums import MissionStatus
 from nova_core.models.orm import Mission
@@ -48,7 +61,15 @@ HELP_TEXT = """NOVA Phase 3A commands:
 - search <pattern> [path] — ripgrep-style search in allowlisted paths
 - help — this message
 
-Unsafe write/shell/browser/email/automation requests are blocked."""
+Unsafe write/shell/browser/email/automation requests require approval.
+Protected paths always blocked."""
+
+
+@dataclass(frozen=True)
+class PathGuardResult:
+    allowed: bool
+    blocked_message: str | None = None
+    approval_resolution: ActionResolution | None = None
 
 
 class ChatService:
@@ -63,6 +84,7 @@ class ChatService:
         self._code_runtime = CodeRuntime(allowed_roots=roots)
         self._router = ProviderRouter(ProviderConfig())
         self._provider_runtime = ProviderRuntime(settings)
+        self._approval_svc = ApprovalRequestService(session, settings)
 
     async def handle_message(
         self,
@@ -80,26 +102,12 @@ class ChatService:
         chat_session = await sessions.get_or_create(principal, session_id, title=self._title(text))
         await sessions.append_message(chat_session, role="user", content=text)
 
-        if self._policy.is_unsafe_request_text(text):
-            preview = self._shell_command_preview(text)
-            await self._audit_blocked(principal, preview, reason="unsafe_keyword")
-            response = self._blocked_response(
-                session_id=chat_session.id,
-                extra=(
-                    f" Shell commands require approval. Requested: `{preview}`"
-                    if "shell" in text.lower() or "rm " in text.lower()
-                    else None
-                ),
-            )
-            await sessions.append_message(
-                chat_session,
-                role="assistant",
-                content=response["response"],
-                intent="blocked",
-                blocked=True,
-            )
-            await self.session.commit()
-            return response
+        capability_response = await self._evaluate_capability_action(
+            text, principal, chat_session.id
+        )
+        if capability_response is not None:
+            await self._persist_assistant(sessions, chat_session, capability_response)
+            return capability_response
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
@@ -134,7 +142,7 @@ class ChatService:
 
         if handler:
             body = await cast(Callable[..., Awaitable[str]], handler)(
-                principal, args, routing=routing
+                principal, args, routing=routing, session_id=chat_session.id
             )
             if body.startswith("Blocked:"):
                 response = self._response(
@@ -143,6 +151,19 @@ class ChatService:
                     routing=routing,
                     blocked=True,
                     session_id=chat_session.id,
+                )
+                await self._persist_assistant(sessions, chat_session, response)
+                return response
+            if body.startswith("I can do this after approval."):
+                approval_id = self._extract_approval_id(body)
+                response = self._response(
+                    body,
+                    intent="approval_required",
+                    routing=routing,
+                    blocked=False,
+                    session_id=chat_session.id,
+                    approval_required=True,
+                    approval_id=approval_id,
                 )
                 await self._persist_assistant(sessions, chat_session, response)
                 return response
@@ -195,18 +216,13 @@ class ChatService:
             },
         }
 
-        if self._policy.is_unsafe_request_text(text):
-            preview = self._shell_command_preview(text)
-            await self._audit_blocked(principal, preview, reason="unsafe_keyword")
-            response = self._blocked_response(
-                session_id=chat_session.id,
-                extra=(
-                    f" Shell commands require approval. Requested: `{preview}`"
-                    if "shell" in text.lower() or "rm " in text.lower()
-                    else None
-                ),
-            )
-            async for event in self._emit_full_response(sessions, chat_session, response):
+        capability_response = await self._evaluate_capability_action(
+            text, principal, chat_session.id
+        )
+        if capability_response is not None:
+            async for event in self._emit_full_response(
+                sessions, chat_session, capability_response
+            ):
                 if cancel and cancel.cancelled:
                     yield {"event": "cancelled", "data": {}}
                     return
@@ -254,7 +270,7 @@ class ChatService:
 
         if handler:
             body = await cast(Callable[..., Awaitable[str]], handler)(
-                principal, args, routing=routing
+                principal, args, routing=routing, session_id=chat_session.id
             )
             if body.startswith("Blocked:"):
                 response = self._response(
@@ -263,6 +279,16 @@ class ChatService:
                     routing=routing,
                     blocked=True,
                     session_id=chat_session.id,
+                )
+            elif body.startswith("I can do this after approval."):
+                response = self._response(
+                    body,
+                    intent="approval_required",
+                    routing=routing,
+                    blocked=False,
+                    session_id=chat_session.id,
+                    approval_required=True,
+                    approval_id=self._extract_approval_id(body),
                 )
             else:
                 await self._maybe_audit_command(principal, intent, args, body)
@@ -527,12 +553,17 @@ class ChatService:
         args: dict[str, str],
         *,
         routing: Any | None = None,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         path = args.get("path", ".")
-        blocked = await self._guard_path_access(principal, path, routing)
-        if blocked:
-            return blocked
+        guard = await self._guard_path_access(principal, path, routing)
+        if not guard.allowed:
+            if guard.approval_resolution is not None:
+                return await self._format_approval_message(
+                    principal, guard.approval_resolution, session_id
+                )
+            return guard.blocked_message or BLOCKED_MESSAGE
         evaluation = self._policy.evaluate("list_directory", category="filesystem_read")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
             await self._audit_blocked(principal, sanitize_path_for_log(path), reason="policy_block")
@@ -554,12 +585,17 @@ class ChatService:
         args: dict[str, str],
         *,
         routing: Any | None = None,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         path = args.get("path", "")
-        blocked = await self._guard_path_access(principal, path, routing)
-        if blocked:
-            return blocked
+        guard = await self._guard_path_access(principal, path, routing)
+        if not guard.allowed:
+            if guard.approval_resolution is not None:
+                return await self._format_approval_message(
+                    principal, guard.approval_resolution, session_id
+                )
+            return guard.blocked_message or BLOCKED_MESSAGE
         evaluation = self._policy.evaluate("read_file", category="filesystem_read")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
             await self._audit_blocked(principal, sanitize_path_for_log(path), reason="policy_block")
@@ -579,12 +615,17 @@ class ChatService:
         args: dict[str, str],
         *,
         routing: Any | None = None,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         path = args.get("path", ".")
-        blocked = await self._guard_path_access(principal, path, routing)
-        if blocked:
-            return blocked
+        guard = await self._guard_path_access(principal, path, routing)
+        if not guard.allowed:
+            if guard.approval_resolution is not None:
+                return await self._format_approval_message(
+                    principal, guard.approval_resolution, session_id
+                )
+            return guard.blocked_message or BLOCKED_MESSAGE
         evaluation = self._policy.evaluate("ripgrep_search", category="search")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
             await self._audit_blocked(principal, args.get("pattern", ""), reason="policy_block")
@@ -614,12 +655,17 @@ class ChatService:
         args: dict[str, str],
         *,
         routing: Any | None = None,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         path = args.get("path", "~/Projects/nova")
-        blocked = await self._guard_path_access(principal, path, routing)
-        if blocked:
-            return blocked
+        guard = await self._guard_path_access(principal, path, routing)
+        if not guard.allowed:
+            if guard.approval_resolution is not None:
+                return await self._format_approval_message(
+                    principal, guard.approval_resolution, session_id
+                )
+            return guard.blocked_message or BLOCKED_MESSAGE
         result = self._code_runtime.repo_analysis(path)
         if not result.success:
             return await self._handle_tool_error(principal, path, result.error)
@@ -638,12 +684,17 @@ class ChatService:
         args: dict[str, str],
         *,
         routing: Any | None = None,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         path = args.get("path", "")
-        blocked = await self._guard_path_access(principal, path, routing)
-        if blocked:
-            return blocked
+        guard = await self._guard_path_access(principal, path, routing)
+        if not guard.allowed:
+            if guard.approval_resolution is not None:
+                return await self._format_approval_message(
+                    principal, guard.approval_resolution, session_id
+                )
+            return guard.blocked_message or BLOCKED_MESSAGE
         result = self._code_runtime.explain_code(path)
         if not result.success:
             return await self._handle_tool_error(principal, path, result.error)
@@ -653,39 +704,47 @@ class ChatService:
             f"{result.output['summary']}"
         )
 
-    async def _patch_plan(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
-        await self._audit_blocked(
-            principal,
-            args.get("instruction", ""),
-            reason="patch_generation_requires_approval",
-        )
-        result = self._code_runtime.patch_plan(args.get("instruction", ""))
+    async def _patch_plan(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        session_id: str | None = None,
+        **_kw: Any,
+    ) -> str:
+        instruction = args.get("instruction", "")
+        result = self._code_runtime.patch_plan(instruction)
         plan = "; ".join(result.output["plan"])
-        return f"{BLOCKED_MESSAGE} Patch plan prepared for approval: {plan}."
+        resolution = ActionResolution(
+            capability=CapabilityName.CODE_PATCH,
+            payload={"instruction": instruction, "plan": result.output["plan"]},
+            action_summary=f"Generate code patch: {instruction[:120]}",
+            preview=plan[:500] or instruction[:500],
+            risk_level=risk_for_capability(CapabilityName.CODE_PATCH),
+        )
+        return await self._format_approval_message(principal, resolution, session_id)
 
     async def _guard_path_access(
         self,
         principal: Principal,
         path: str,
         routing: Any | None = None,
-    ) -> str | None:
+    ) -> PathGuardResult:
         if is_protected_path(path):
             await self._audit_blocked(
                 principal,
                 sanitize_path_for_log(path),
                 reason="protected_path_block",
             )
-            return PROTECTED_PATH_MESSAGE
+            return PathGuardResult(allowed=False, blocked_message=PROTECTED_PATH_MESSAGE)
         if routing is not None and is_cloud_provider(routing.provider):
             evaluation = evaluate_file_transmission(routing.provider, path, approved=False)
             if evaluation.decision != FileTransmissionDecision.ALLOW:
-                await self._audit_blocked(
-                    principal,
-                    sanitize_path_for_log(path),
-                    reason="cloud_file_approval_required",
+                return PathGuardResult(
+                    allowed=False,
+                    approval_resolution=cloud_file_resolution(path),
                 )
-                return evaluation.message or BLOCKED_MESSAGE
-        return None
+        return PathGuardResult(allowed=True)
 
     async def _handle_tool_error(
         self,
@@ -724,6 +783,103 @@ class ChatService:
             if lowered.startswith(prefix):
                 return message[len(prefix) :].strip() or message.strip()
         return message.strip()
+
+    async def _evaluate_capability_action(
+        self,
+        text: str,
+        principal: Principal,
+        session_id: str | None,
+    ) -> dict[str, Any] | None:
+        resolution = resolve_chat_message(text)
+        if resolution is None:
+            return None
+
+        if resolution.kind == "protected":
+            await self._audit_blocked(
+                principal,
+                sanitize_path_for_log(resolution.preview or text),
+                reason="protected_path_block",
+            )
+            response = self._blocked_response(
+                session_id=session_id,
+                extra=f" {resolution.message}",
+            )
+            return response
+
+        if resolution.kind == "blocked" or (
+            resolution.capability in PERMANENTLY_BLOCKED_CAPABILITIES
+        ):
+            await self._audit_blocked(
+                principal,
+                text[:120],
+                reason="capability_blocked",
+            )
+            return self._blocked_response(
+                session_id=session_id,
+                extra=f" {resolution.message or BLOCKED_MESSAGE}",
+            )
+
+        if resolution.capability not in APPROVAL_REQUIRED_CAPABILITIES:
+            return None
+
+        return await self._approval_response_from_resolution(principal, resolution, session_id)
+
+    async def _approval_response_from_resolution(
+        self,
+        principal: Principal,
+        resolution: ActionResolution,
+        session_id: str | None,
+    ) -> dict[str, Any]:
+        assert resolution.capability is not None
+        approval = await self._approval_svc.create_request(
+            principal,
+            capability=resolution.capability,
+            action_summary=resolution.action_summary,
+            preview=resolution.preview,
+            payload=resolution.payload,
+            risk_level=resolution.risk_level,
+            session_id=session_id,
+        )
+        body = self._approval_message_body(approval)
+        return self._response(
+            body,
+            intent="approval_required",
+            blocked=False,
+            session_id=session_id,
+            approval_required=True,
+            approval_id=approval.id,
+            risk_level=approval.risk_level,
+        )
+
+    async def _format_approval_message(
+        self,
+        principal: Principal,
+        resolution: ActionResolution,
+        session_id: str | None,
+    ) -> str:
+        response = await self._approval_response_from_resolution(principal, resolution, session_id)
+        return str(response["response"])
+
+    def _approval_message_body(self, approval: Any) -> str:
+        preview = approval.command_or_payload_preview
+        if approval.capability == CapabilityName.SHELL_EXECUTE.value:
+            preview_line = f"Command: `{preview}`"
+        elif approval.capability == CapabilityName.CODE_PATCH.value:
+            preview_line = f"Patch summary: {preview[:400]}"
+        else:
+            preview_line = f"Preview: {preview[:400]}"
+        return (
+            "I can do this after approval.\n\n"
+            f"Summary: {approval.action_summary}\n"
+            f"Risk: {approval.risk_level}\n"
+            f"{preview_line}\n\n"
+            f"Approval ID: {approval.id}\n"
+            "Open Settings → Approvals to approve or reject."
+        )
+
+    def _extract_approval_id(self, body: str) -> str | None:
+        match = re.search(r"Approval ID: ([0-9a-f-]{36})", body)
+        return match.group(1) if match else None
 
     async def _audit_blocked(self, principal: Principal, message: str, *, reason: str) -> None:
         await record_audit_event(
@@ -805,12 +961,18 @@ class ChatService:
         blocked: bool = False,
         session_id: str | None = None,
         token_usage: dict[str, Any] | None = None,
+        approval_required: bool = False,
+        approval_id: str | None = None,
+        risk_level: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
             "intent": intent,
             "blocked": blocked,
             "session_id": session_id,
+            "approval_required": approval_required,
+            "approval_id": approval_id,
+            "risk_level": risk_level,
         }
         if token_usage is not None:
             payload["token_usage"] = token_usage

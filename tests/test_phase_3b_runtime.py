@@ -214,4 +214,4 @@ async def test_code_runtime_chat_commands(auth_client: AsyncClient, paired_clien
         "/api/v1/chat", json={"message": "generate patch change the API"}
     )
     assert patch.status_code == 200
-    assert patch.json()["blocked"] is True
+    assert patch.json()["approval_required"] is True

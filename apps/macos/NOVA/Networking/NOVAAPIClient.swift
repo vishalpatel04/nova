@@ -192,6 +192,22 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacCompanionInboxItem.self, from: data)
     }
 
+    func fetchPendingApprovals() async throws -> [MacApprovalRequest] {
+        let data = try await request(path: "/api/v1/approvals/pending")
+        struct Response: Decodable { let items: [MacApprovalRequest] }
+        return try decoder.decode(Response.self, from: data).items
+    }
+
+    func approveRequest(id: String) async throws -> MacApprovalRequest {
+        let data = try await request(path: "/api/v1/approvals/\(id)/approve", method: "POST")
+        return try decoder.decode(MacApprovalRequest.self, from: data)
+    }
+
+    func rejectRequest(id: String) async throws -> MacApprovalRequest {
+        let data = try await request(path: "/api/v1/approvals/\(id)/reject", method: "POST")
+        return try decoder.decode(MacApprovalRequest.self, from: data)
+    }
+
     func fetchSchedulerStatus() async throws -> MacSchedulerStatus {
         let data = try await request(path: "/api/v1/scheduler/status")
         return try decoder.decode(MacSchedulerStatus.self, from: data)
@@ -289,6 +305,9 @@ struct MacChatResponse: Decodable {
     let blocked: Bool
     let sessionId: String?
     let tokenUsage: [String: StringValue]?
+    let approvalRequired: Bool?
+    let approvalId: String?
+    let riskLevel: String?
 }
 
 struct MacRuntimeStatus: Decodable {
@@ -355,6 +374,17 @@ struct MacCompanionInboxItem: Identifiable, Decodable {
 struct MacSchedulerStatus: Decodable {
     let paused: Bool
     let taskCount: Int
+}
+
+struct MacApprovalRequest: Identifiable, Decodable {
+    let id: String
+    let capability: String
+    let actionSummary: String
+    let commandOrPayloadPreview: String
+    let riskLevel: String
+    let status: String
+    let createdAt: Date
+    let expiresAt: Date
 }
 
 enum StringValue: Decodable {

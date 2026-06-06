@@ -48,18 +48,24 @@ async def test_chat_blocks_unsafe_request(
 ) -> None:
     from sqlalchemy import select
 
-    from nova_core.models.orm import AuditEvent
+    from nova_core.models.orm import ApprovalRequest, AuditEvent
 
     _device_id, token = paired_client_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
     resp = await auth_client.post("/api/v1/chat", json={"message": "run shell rm -rf /"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["blocked"] is True
-    assert "Blocked:" in data["response"]
+    assert data["approval_required"] is True
+    assert data["blocked"] is False
+    assert "I can do this after approval" in data["response"]
+    assert data["approval_id"]
+
+    record = await db_session.get(ApprovalRequest, data["approval_id"])
+    assert record is not None
+    assert record.status == "pending"
 
     result = await db_session.execute(
-        select(AuditEvent).where(AuditEvent.action == "chat.action_blocked")
+        select(AuditEvent).where(AuditEvent.action == "approval.requested")
     )
     assert result.scalars().first() is not None
 

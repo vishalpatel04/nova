@@ -115,6 +115,8 @@ struct MacSettingsView: View {
                 .tabItem { Label("Sessions", systemImage: "clock.arrow.circlepath") }
             NavigationStack { CompanionInboxView() }
                 .tabItem { Label("Companion", systemImage: "tray.full") }
+            NavigationStack { ApprovalQueueView() }
+                .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
             MacAgentsView().tabItem { Label("Agents", systemImage: "person.3") }
             MacMissionRoomView().tabItem { Label("Missions", systemImage: "list.bullet") }
         }

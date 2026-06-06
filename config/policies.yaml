@@ -28,6 +28,21 @@ approval:
     - search
     - filesystem_read
   timeout_hours: 24
+  # Phase 3E capabilities — see docs/PHASE_3E_CAPABILITIES.md
+  capabilities:
+    allowed_by_default:
+      - file.read
+      - shell.preview
+    approval_required:
+      - file.write
+      - shell.execute
+      - code.patch
+      - cloud.send_file
+      - git.commit
+    permanently_blocked:
+      - automation.run
+      - browser.control
+      - git.push
   default_reviewer: neptune
 
 audit:

@@ -134,3 +134,18 @@ class DeviceCapability(StrEnum):
     SCREENSHOT = "screenshot"
     DESKTOP_AUTOMATION = "desktop_automation"
     PPT_RENDER = "ppt_render"
+
+
+class ActionApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    CONSUMED = "consumed"
+
+
+class ApprovalRiskLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"

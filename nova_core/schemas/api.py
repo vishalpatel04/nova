@@ -179,6 +179,35 @@ class ChatResponse(BaseModel):
     session_id: str | None = None
     routing: dict[str, Any] | None = None
     token_usage: dict[str, Any] | None = None
+    approval_required: bool = False
+    approval_id: str | None = None
+    risk_level: str | None = None
+
+
+class ApprovalRequestCreateBody(BaseModel):
+    capability: str = Field(min_length=3, max_length=64)
+    action_summary: str = Field(min_length=1, max_length=512)
+    command_or_payload_preview: str = Field(min_length=1, max_length=4000)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    risk_level: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+    session_id: str | None = None
+
+
+class ApprovalRequestResponse(BaseModel):
+    id: str
+    capability: str
+    action_summary: str
+    command_or_payload_preview: str
+    risk_level: str
+    status: str
+    created_at: datetime
+    expires_at: datetime
+    decided_at: datetime | None = None
+    consumed_at: datetime | None = None
+
+
+class ApprovalPendingListResponse(BaseModel):
+    items: list[ApprovalRequestResponse] = Field(default_factory=list)
 
 
 class ChatMessageRecordResponse(BaseModel):

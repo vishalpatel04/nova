@@ -42,6 +42,9 @@ async def chat(
         session_id=result.get("session_id"),
         routing=result.get("routing"),
         token_usage=result.get("token_usage"),
+        approval_required=bool(result.get("approval_required", False)),
+        approval_id=result.get("approval_id"),
+        risk_level=result.get("risk_level"),
     )
 
 
