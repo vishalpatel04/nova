@@ -13,6 +13,21 @@ import httpx
 from nova_core.providers.router import ProviderName
 from nova_core.providers.stream_context import StreamCancelToken, StreamTelemetry
 from nova_core.schemas.settings import Settings
+from nova_core.sentry.logging import get_logger
+
+logger = get_logger("nova.providers.runtime")
+
+_PREFERRED_OLLAMA_MODELS: dict[ProviderName, tuple[str, ...]] = {
+    ProviderName.LOCAL: ("llama3.2", "llama3.2:latest"),
+    ProviderName.QWEN: ("qwen2.5:7b", "qwen2.5", "qwen2.5:latest"),
+    ProviderName.DEEPSEEK: ("deepseek-r1", "deepseek-r1:latest"),
+}
+
+_OLLAMA_PREFIX_HINTS: dict[ProviderName, str] = {
+    ProviderName.LOCAL: "llama",
+    ProviderName.QWEN: "qwen",
+    ProviderName.DEEPSEEK: "deepseek",
+}
 
 
 @dataclass(frozen=True)
@@ -49,6 +64,7 @@ class ProviderRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.timeout = httpx.Timeout(settings.nova_provider_timeout_seconds)
+        self._ollama_tags_cache: dict[str, list[str]] = {}
 
     @property
     def paid_enabled(self) -> bool:
@@ -80,9 +96,31 @@ class ProviderRuntime:
         last_error: str | None = None
         for index, provider in enumerate(self.configured_chain()):
             if not self._configured(provider):
+                logger.info(
+                    "provider_infer_skip_unconfigured",
+                    provider=provider.value,
+                )
                 continue
             try:
-                result = await self._infer_provider(provider, request)
+                if provider in {ProviderName.LOCAL, ProviderName.QWEN, ProviderName.DEEPSEEK}:
+                    model = await self._resolve_ollama_model(provider)
+                    logger.info(
+                        "provider_infer_attempt",
+                        provider=provider.value,
+                        model=model,
+                        url=f"{self._base_url(provider)}/api/generate",
+                    )
+                    result = await self._infer_provider(provider, request, model=model)
+                else:
+                    logger.info("provider_infer_attempt", provider=provider.value)
+                    result = await self._infer_provider(provider, request)
+                logger.info(
+                    "provider_infer_success",
+                    provider=result.provider.value,
+                    model=result.model,
+                    mode=result.mode,
+                    output_chars=len(result.content),
+                )
                 return InferenceResult(
                     provider=result.provider,
                     model=result.model,
@@ -95,7 +133,17 @@ class ProviderRuntime:
                 )
             except Exception as exc:
                 last_error = str(exc)
+                logger.warning(
+                    "provider_infer_failed",
+                    provider=provider.value,
+                    error=last_error,
+                )
                 continue
+        logger.warning(
+            "provider_infer_degraded",
+            reason="chain_exhausted",
+            last_error=last_error,
+        )
         return self._local_degraded_response(request, last_error)
 
     async def stream(
@@ -112,18 +160,53 @@ class ProviderRuntime:
             if not self._configured(provider):
                 continue
             try:
-                async for chunk in self._stream_provider(provider, request, cancel=cancel):
-                    if cancel and cancel.cancelled:
-                        telemetry.cancelled = True
-                        break
-                    telemetry.token_count += 1
-                    telemetry.provider = provider.value
-                    yield chunk
-                if telemetry.token_count > 0:
-                    telemetry.fallback_used = index > 0
-                    return
-            except Exception:
+                if provider in {ProviderName.LOCAL, ProviderName.QWEN, ProviderName.DEEPSEEK}:
+                    model = await self._resolve_ollama_model(provider)
+                    logger.info(
+                        "provider_stream_attempt",
+                        provider=provider.value,
+                        model=model,
+                        url=f"{self._base_url(provider)}/api/generate",
+                    )
+                    async for chunk in self._stream_provider(
+                        provider, request, model=model, cancel=cancel
+                    ):
+                        if cancel and cancel.cancelled:
+                            telemetry.cancelled = True
+                            break
+                        telemetry.token_count += 1
+                        telemetry.provider = provider.value
+                        telemetry.model = model
+                        yield chunk
+                    if telemetry.token_count > 0:
+                        telemetry.fallback_used = index > 0
+                        logger.info(
+                            "provider_stream_success",
+                            provider=provider.value,
+                            model=model,
+                            token_count=telemetry.token_count,
+                        )
+                        return
+                else:
+                    async for chunk in self._stream_provider(provider, request, cancel=cancel):
+                        if cancel and cancel.cancelled:
+                            telemetry.cancelled = True
+                            break
+                        telemetry.token_count += 1
+                        telemetry.provider = provider.value
+                        yield chunk
+                    if telemetry.token_count > 0:
+                        telemetry.fallback_used = index > 0
+                        return
+            except Exception as exc:
+                logger.warning(
+                    "provider_stream_failed",
+                    provider=provider.value,
+                    error=str(exc),
+                )
                 continue
+
+        logger.warning("provider_stream_degraded", reason="chain_exhausted")
 
         result = await self.infer(request)
         telemetry.provider = result.provider.value
@@ -148,10 +231,14 @@ class ProviderRuntime:
         provider: ProviderName,
         request: InferenceRequest,
         *,
+        model: str | None = None,
         cancel: StreamCancelToken | None = None,
     ) -> AsyncIterator[str]:
         if provider in {ProviderName.LOCAL, ProviderName.QWEN, ProviderName.DEEPSEEK}:
-            async for chunk in self._stream_ollama(provider, request, cancel=cancel):
+            resolved = model or await self._resolve_ollama_model(provider)
+            async for chunk in self._stream_ollama(
+                provider, request, model=resolved, cancel=cancel
+            ):
                 yield chunk
             return
         result = await self._infer_provider(provider, request)
@@ -167,26 +254,41 @@ class ProviderRuntime:
         provider: ProviderName,
         request: InferenceRequest,
         *,
+        model: str,
         cancel: StreamCancelToken | None = None,
     ) -> AsyncIterator[str]:
-        model = {
-            ProviderName.QWEN: "qwen2.5",
-            ProviderName.DEEPSEEK: "deepseek-r1",
-        }.get(provider, "llama3.2")
+        url = f"{self._base_url(provider)}/api/generate"
         payload = {
             "model": model,
             "prompt": f"{request.system_prompt}\n\nUser: {request.prompt}\nNOVA:",
             "stream": True,
         }
+        logger.info(
+            "ollama_stream_request",
+            provider=provider.value,
+            model=model,
+            url=url,
+        )
         async with (
             httpx.AsyncClient(timeout=self.timeout) as client,
-            client.stream(
-                "POST",
-                f"{self._base_url(provider)}/api/generate",
-                json=payload,
-            ) as resp,
+            client.stream("POST", url, json=payload) as resp,
         ):
-            resp.raise_for_status()
+            logger.info(
+                "ollama_stream_response",
+                provider=provider.value,
+                model=model,
+                status=resp.status_code,
+            )
+            if resp.status_code >= 400:
+                body = (await resp.aread()).decode("utf-8", errors="replace")[:300]
+                logger.warning(
+                    "ollama_stream_error_body",
+                    provider=provider.value,
+                    model=model,
+                    status=resp.status_code,
+                    body=body,
+                )
+                resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if cancel and cancel.cancelled:
                     break
@@ -269,37 +371,143 @@ class ProviderRuntime:
         return self.settings.nova_ollama_base_url.rstrip("/")
 
     async def _infer_provider(
-        self, provider: ProviderName, request: InferenceRequest
+        self, provider: ProviderName, request: InferenceRequest, *, model: str | None = None
     ) -> InferenceResult:
         if provider in {ProviderName.LOCAL, ProviderName.QWEN, ProviderName.DEEPSEEK}:
-            return await self._infer_ollama(provider, request)
+            resolved = model or await self._resolve_ollama_model(provider)
+            return await self._infer_ollama(provider, request, model=resolved)
         if provider == ProviderName.OPENAI:
             return await self._infer_openai(request)
         if provider == ProviderName.ANTHROPIC:
             return await self._infer_anthropic(request)
         raise RuntimeError(f"Unsupported provider: {provider}")
 
+    async def _fetch_ollama_models(self, provider: ProviderName) -> list[str]:
+        base_url = self._base_url(provider)
+        cached = self._ollama_tags_cache.get(base_url)
+        if cached is not None:
+            return cached
+        tags_url = f"{base_url}/api/tags"
+        logger.info("ollama_tags_request", provider=provider.value, url=tags_url)
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(tags_url)
+            logger.info(
+                "ollama_tags_response",
+                provider=provider.value,
+                status=resp.status_code,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        models = [
+            str(entry.get("name", "")).strip()
+            for entry in data.get("models", [])
+            if entry.get("name")
+        ]
+        self._ollama_tags_cache[base_url] = models
+        logger.info(
+            "ollama_tags_models",
+            provider=provider.value,
+            models=models,
+        )
+        return models
+
+    async def _resolve_ollama_model(self, provider: ProviderName) -> str:
+        explicit = {
+            ProviderName.LOCAL: self.settings.nova_ollama_model,
+            ProviderName.QWEN: self.settings.nova_qwen_model,
+            ProviderName.DEEPSEEK: self.settings.nova_deepseek_model,
+        }.get(provider, "")
+        if explicit:
+            logger.info(
+                "ollama_model_explicit",
+                provider=provider.value,
+                model=explicit,
+            )
+            return explicit
+
+        available = await self._fetch_ollama_models(provider)
+        if not available:
+            raise RuntimeError(f"No Ollama models available for {provider.value}")
+
+        for candidate in _PREFERRED_OLLAMA_MODELS.get(provider, ()):
+            if candidate in available:
+                logger.info(
+                    "ollama_model_preferred",
+                    provider=provider.value,
+                    model=candidate,
+                )
+                return candidate
+
+        prefix = _OLLAMA_PREFIX_HINTS.get(provider, "")
+        if prefix:
+            for name in available:
+                if name.startswith(prefix):
+                    logger.info(
+                        "ollama_model_prefix_match",
+                        provider=provider.value,
+                        model=name,
+                        prefix=prefix,
+                    )
+                    return name
+
+        if provider == ProviderName.LOCAL:
+            logger.info(
+                "ollama_model_local_fallback",
+                provider=provider.value,
+                model=available[0],
+            )
+            return available[0]
+
+        raise RuntimeError(f"No matching Ollama model for {provider.value}; available={available}")
+
     async def _infer_ollama(
-        self, provider: ProviderName, request: InferenceRequest
+        self, provider: ProviderName, request: InferenceRequest, *, model: str
     ) -> InferenceResult:
-        model = {
-            ProviderName.QWEN: "qwen2.5",
-            ProviderName.DEEPSEEK: "deepseek-r1",
-        }.get(provider, "llama3.2")
+        url = f"{self._base_url(provider)}/api/generate"
         payload = {
             "model": model,
             "prompt": f"{request.system_prompt}\n\nUser: {request.prompt}\nNOVA:",
             "stream": False,
         }
+        logger.info(
+            "ollama_infer_request",
+            provider=provider.value,
+            model=model,
+            url=url,
+        )
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(f"{self._base_url(provider)}/api/generate", json=payload)
-            resp.raise_for_status()
+            resp = await client.post(url, json=payload)
+            logger.info(
+                "ollama_infer_response",
+                provider=provider.value,
+                model=model,
+                status=resp.status_code,
+            )
+            if resp.status_code >= 400:
+                body = resp.text[:300]
+                logger.warning(
+                    "ollama_infer_error_body",
+                    provider=provider.value,
+                    model=model,
+                    status=resp.status_code,
+                    body=body,
+                )
+                resp.raise_for_status()
             data = resp.json()
         content = str(data.get("response", "")).strip()
+        if not content:
+            error = str(data.get("error", "empty Ollama response"))
+            logger.warning(
+                "ollama_infer_empty_content",
+                provider=provider.value,
+                model=model,
+                error=error,
+            )
+            raise RuntimeError(error)
         return InferenceResult(
             provider=provider,
             model=model,
-            content=content or self._default_help(),
+            content=content,
             mode="local_ollama",
             input_tokens=self._estimate_tokens(request.prompt),
             output_tokens=self._estimate_tokens(content),
