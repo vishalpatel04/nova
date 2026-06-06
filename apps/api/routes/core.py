@@ -1,15 +1,18 @@
-"""API route handlers."""
+"""Core API route handlers."""
 
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import nova_core
+from apps.api.auth import require_roles
 from apps.api.deps import get_app_state, get_db_session
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
+from nova_core.auth.principal import Principal
 from nova_core.devices.availability import get_worker_availability
 from nova_core.models.enums import DeviceStatus, EvidenceBadge, MissionStatus, MissionStepStatus
 from nova_core.models.orm import Agent, Mission
@@ -19,7 +22,6 @@ from nova_core.schemas.api import (
     DeviceResponse,
     HealthResponse,
     MissionCreateRequest,
-    MissionEventWSMessage,
     MissionResponse,
     MissionStepResponse,
     ReadinessCheck,
@@ -39,7 +41,7 @@ def _get_settings() -> Settings:
     return get_app_state().settings
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health() -> HealthResponse:
     settings = _get_settings()
     return HealthResponse(
@@ -49,8 +51,8 @@ async def health() -> HealthResponse:
     )
 
 
-@router.get("/ready", response_model=ReadinessResponse)
-@router.get("/readiness", response_model=ReadinessResponse)
+@router.get("/ready", response_model=ReadinessResponse, tags=["system"])
+@router.get("/readiness", response_model=ReadinessResponse, tags=["system"])
 async def readiness(session: AsyncSession = Depends(get_db_session)) -> ReadinessResponse:
     checks: list[ReadinessCheck] = []
     all_ready = True
@@ -68,8 +70,7 @@ async def readiness(session: AsyncSession = Depends(get_db_session)) -> Readines
             await state.redis.ping()
             checks.append(ReadinessCheck(name="redis", status="ok"))
         else:
-            checks.append(ReadinessCheck(name="redis", status="fail", detail="Not connected"))
-            all_ready = False
+            checks.append(ReadinessCheck(name="redis", status="degraded", detail="Not connected"))
     except Exception as exc:
         checks.append(ReadinessCheck(name="redis", status="fail", detail=str(exc)))
         all_ready = False
@@ -77,9 +78,13 @@ async def readiness(session: AsyncSession = Depends(get_db_session)) -> Readines
     return ReadinessResponse(ready=all_ready, checks=checks)
 
 
-@router.get("/system/status", response_model=SystemStatusResponse)
-async def system_status(session: AsyncSession = Depends(get_db_session)) -> SystemStatusResponse:
-    availability = await get_worker_availability(session)
+@router.get("/system/status", response_model=SystemStatusResponse, tags=["system"])
+async def system_status(
+    principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> SystemStatusResponse:
+    settings = _get_settings()
+    availability = await get_worker_availability(session, settings)
 
     active_result = await session.execute(
         select(func.count())
@@ -90,6 +95,7 @@ async def system_status(session: AsyncSession = Depends(get_db_session)) -> Syst
 
     db_status = "ok"
     redis_status = "ok"
+    streaming = "degraded"
     state = get_app_state()
     try:
         await session.execute(select(func.now()))
@@ -98,8 +104,9 @@ async def system_status(session: AsyncSession = Depends(get_db_session)) -> Syst
     try:
         if state.redis:
             await state.redis.ping()
+            streaming = "live"
         else:
-            redis_status = "fail"
+            redis_status = "unavailable"
     except Exception:
         redis_status = "fail"
 
@@ -107,16 +114,23 @@ async def system_status(session: AsyncSession = Depends(get_db_session)) -> Syst
         control_plane="ok",
         database=db_status,
         redis=redis_status,
+        streaming=streaming,
         workers_online=availability["workers_online"],
         workers_total=availability["workers_total"],
         workers_stale=availability["workers_stale"],
+        workers_offline=availability["workers_offline"],
+        workers_revoked=availability["workers_revoked"],
+        has_eligible_online_worker=availability["has_eligible_online_worker"],
         missions_active=active_count,
         timestamp=datetime.now(UTC),
     )
 
 
-@router.get("/devices", response_model=list[DeviceResponse])
-async def list_devices(session: AsyncSession = Depends(get_db_session)) -> list[DeviceResponse]:
+@router.get("/devices", response_model=list[DeviceResponse], tags=["devices"])
+async def list_devices(
+    principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> list[DeviceResponse]:
     settings = _get_settings()
     svc = DeviceService(session, settings)
     devices = await svc.list_devices()
@@ -131,6 +145,10 @@ async def list_devices(session: AsyncSession = Depends(get_db_session)) -> list[
                 status=DeviceStatus(d.status),
                 hostname=d.hostname,
                 os_version=d.os_version,
+                architecture=d.architecture,
+                privacy_class=d.privacy_class,
+                token_state=d.token_state,
+                connection_status=d.connection_status,
                 last_seen_at=d.last_seen_at,
                 capabilities=caps,
             )
@@ -138,8 +156,11 @@ async def list_devices(session: AsyncSession = Depends(get_db_session)) -> list[
     return responses
 
 
-@router.get("/agents", response_model=list[AgentResponse])
-async def list_agents(session: AsyncSession = Depends(get_db_session)) -> list[AgentResponse]:
+@router.get("/agents", response_model=list[AgentResponse], tags=["agents"])
+async def list_agents(
+    _principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> list[AgentResponse]:
     result = await session.execute(select(Agent).order_by(Agent.id))
     agents = result.scalars().all()
     return [
@@ -159,9 +180,10 @@ async def list_agents(session: AsyncSession = Depends(get_db_session)) -> list[A
     ]
 
 
-@router.post("/missions", response_model=MissionResponse, status_code=201)
+@router.post("/missions", response_model=MissionResponse, status_code=201, tags=["missions"])
 async def create_mission(
     body: MissionCreateRequest,
+    principal: Annotated[Principal, Depends(require_roles("client"))],
     session: AsyncSession = Depends(get_db_session),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> MissionResponse:
@@ -169,18 +191,20 @@ async def create_mission(
     svc = MissionService(session, settings)
     svc.set_event_emitter(_publish_mission_event)
     mission = await svc.create_and_run(
-        user_id=settings.nova_default_user_id,
+        user_id=principal.user_id,
         mission_type=body.mission_type,
         title=body.title,
         request_payload=body.request_payload,
         idempotency_key=idempotency_key,
+        principal=principal,
     )
     return _mission_to_response(mission)
 
 
-@router.get("/missions/{mission_id}", response_model=MissionResponse)
+@router.get("/missions/{mission_id}", response_model=MissionResponse, tags=["missions"])
 async def get_mission(
     mission_id: str,
+    _principal: Annotated[Principal, Depends(require_roles("admin", "client"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> MissionResponse:
     settings = _get_settings()
@@ -189,11 +213,16 @@ async def get_mission(
     return _mission_to_response(mission)
 
 
-@router.post("/workers/register", response_model=WorkerRegisterResponse)
+@router.post("/workers/register", response_model=WorkerRegisterResponse, tags=["worker"])
 async def register_worker(
     body: WorkerRegisterRequest,
+    principal: Annotated[Principal, Depends(require_roles("worker"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> WorkerRegisterResponse:
+    if principal.device_id and principal.device_id != body.device_id:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Worker token cannot register a different device")
     settings = _get_settings()
     svc = DeviceService(session, settings)
     device = await svc.register_device(
@@ -212,53 +241,25 @@ async def register_worker(
     )
 
 
-@router.post("/workers/heartbeat")
+@router.post("/workers/heartbeat", tags=["worker"])
 async def worker_heartbeat(
     body: WorkerHeartbeatRequest,
+    principal: Annotated[Principal, Depends(require_roles("worker"))],
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     settings = _get_settings()
     svc = DeviceService(session, settings)
+    device_id = principal.device_id or body.device_id
+    if principal.device_id and body.device_id and principal.device_id != body.device_id:
+        from nova_core.schemas.errors import UnauthorizedError
+
+        raise UnauthorizedError("Worker token cannot heartbeat for a different device")
     await svc.record_heartbeat(
-        device_id=body.device_id,
+        device_id=device_id,
         status=body.status,
         payload=body.payload,
     )
     return {"status": "ok"}
-
-
-@router.websocket("/ws/missions/{mission_id}/events")
-async def mission_events_ws(websocket: WebSocket, mission_id: str) -> None:
-    await websocket.accept()
-    state = get_app_state()
-
-    subscribers = state.mission_event_subscribers.setdefault(mission_id, [])
-
-    async def emit_to_ws(event_type: str, mid: str, payload: dict[str, object] | None) -> None:
-        msg = MissionEventWSMessage(
-            event_type=event_type,
-            mission_id=mid,
-            message=event_type,
-            payload=payload,
-            timestamp=datetime.now(UTC),
-        )
-        try:
-            await websocket.send_json(msg.model_dump(mode="json"))
-        except Exception:
-            pass
-
-    subscribers.append(emit_to_ws)
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
-    except WebSocketDisconnect:
-        pass
-    finally:
-        if emit_to_ws in subscribers:
-            subscribers.remove(emit_to_ws)
 
 
 def _mission_to_response(mission: Mission) -> MissionResponse:
@@ -293,6 +294,8 @@ def _mission_to_response(mission: Mission) -> MissionResponse:
                 message=e.message,
                 payload=e.payload,
                 created_at=e.created_at,
+                sequence_number=e.sequence_number,
+                stream_id=e.stream_id,
             )
             for e in mission.timeline_events
         ],

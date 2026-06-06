@@ -2,17 +2,48 @@
 """Generate minimal but valid Xcode project.pbxproj files for iOS and macOS NOVA apps."""
 
 import hashlib
+import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+_VALID_SWIFT_STEM = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def uid(name: str) -> str:
     return hashlib.md5(name.encode()).hexdigest()[:24].upper()
 
 
+def is_valid_swift_source(path: Path) -> bool:
+    """Reject directories, stray .swift names, and whitespace-only stems."""
+    if not path.is_file():
+        return False
+    if path.suffix != ".swift":
+        return False
+    stem = path.stem
+    if not stem or stem.isspace():
+        return False
+    if stem != path.name.removesuffix(".swift"):
+        return False
+    if any(ord(c) > 127 or c.isspace() for c in stem):
+        return False
+    return bool(_VALID_SWIFT_STEM.match(stem))
+
+
+def pbx_path_literal(rel: Path) -> str:
+    """Quoted PBX path value safe for spaces and special characters."""
+    return json.dumps(rel.as_posix())
+
+
 def collect_swift_files(app_dir: Path) -> list[Path]:
-    return sorted(app_dir.rglob("*.swift"))
+    files = sorted(app_dir.rglob("*.swift"))
+    valid = [f for f in files if is_valid_swift_source(f)]
+    skipped = [f for f in files if f not in valid]
+    if skipped:
+        names = ", ".join(str(s.relative_to(app_dir)) for s in skipped)
+        raise ValueError(f"Invalid Swift source filenames under {app_dir}: {names}")
+    return valid
 
 
 def generate_pbxproj(
@@ -30,11 +61,13 @@ def generate_pbxproj(
     sources_phase_ids = []
 
     for sf in swift_files:
-        rel = sf.relative_to(app_dir.parent)
-        ref_id = uid(f"ref-{rel}")
-        build_id = uid(f"build-{rel}")
+        rel = sf.relative_to(app_dir)
+        rel_posix = rel.as_posix()
+        path_lit = pbx_path_literal(rel)
+        ref_id = uid(f"ref-{rel_posix}")
+        build_id = uid(f"build-{rel_posix}")
         file_refs.append(
-            f'\t\t{ref_id} /* {sf.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{rel}"; sourceTree = "<group>"; }};'
+            f'\t\t{ref_id} /* {sf.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {path_lit}; sourceTree = "<group>"; }};'
         )
         build_files.append(
             f"\t\t{build_id} /* {sf.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {sf.name} */; }};"
@@ -108,7 +141,7 @@ def generate_pbxproj(
 \t\t{nova_group} /* NOVA */ = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir.parent)}')} /* {sf.name} */," for sf in swift_files)}
+{chr(10).join(f"\t\t\t\t{uid(f'ref-{sf.relative_to(app_dir).as_posix()}')} /* {sf.name} */," for sf in swift_files)}
 \t\t\t\t{plist_ref} /* Info.plist */,
 \t\t\t);
 \t\t\tpath = NOVA;
@@ -304,7 +337,11 @@ def generate_macos_pbxproj(project_name, app_dir, bundle_id, deployment_target, 
         bundle_id,
         deployment_target,
         info_plist,
-        extra_settings={"MACOSX_DEPLOYMENT_TARGET": deployment_target, "LSUIElement": "YES"},
+        extra_settings={
+            "MACOSX_DEPLOYMENT_TARGET": deployment_target,
+            "LSUIElement": "YES",
+            "OTHER_LDFLAGS": '"-framework Carbon"',
+        },
     )
     # Remove iOS-specific lines for macOS
     content = content.replace("IPHONEOS_DEPLOYMENT_TARGET", "MACOSX_DEPLOYMENT_TARGET")
@@ -316,50 +353,325 @@ def generate_macos_pbxproj(project_name, app_dir, bundle_id, deployment_target, 
     return content
 
 
+def inject_unit_test_target(
+    pbx_content: str,
+    *,
+    app_target_name: str,
+    test_target_name: str,
+    test_bundle_id: str,
+    test_files: list[Path],
+    platform: str,
+    host_app_name: str,
+) -> str:
+    if not test_files:
+        return pbx_content
+    app_target_id = uid("target")
+    test_target_id = uid(f"test-target-{test_target_name}")
+    test_product_ref = uid(f"test-product-{test_target_name}")
+    test_sources_phase = uid(f"test-sources-{test_target_name}")
+    test_frameworks_phase = uid(f"test-frameworks-{test_target_name}")
+    test_config_list = uid(f"test-config-list-{test_target_name}")
+    test_debug = uid(f"test-debug-{test_target_name}")
+    test_release = uid(f"test-release-{test_target_name}")
+    test_group = uid(f"test-group-{test_target_name}")
+    proxy_id = uid(f"test-proxy-{test_target_name}")
+    dep_id = uid(f"test-dep-{test_target_name}")
+
+    file_refs = []
+    build_files = []
+    source_lines = []
+    for sf in test_files:
+        rel_name = sf.name
+        path_lit = json.dumps(rel_name)
+        ref_id = uid(f"test-ref-{test_target_name}-{rel_name}")
+        build_id = uid(f"test-build-{test_target_name}-{rel_name}")
+        file_refs.append(
+            f'\t\t{ref_id} /* {rel_name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {path_lit}; sourceTree = "<group>"; }};'
+        )
+        build_files.append(
+            f"\t\t{build_id} /* {sf.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {sf.name} */; }};"
+        )
+        source_lines.append(f"\t\t\t\t{build_id} /* {sf.name} in Sources */,")
+
+    sdkroot = "iphoneos" if platform == "ios" else "macosx"
+    test_platform = "iphonesimulator" if platform == "ios" else "macosx"
+    host_settings = (
+        f'BUNDLE_LOADER = "$(TEST_HOST)";\n\t\t\t\tTEST_HOST = "$(BUILT_PRODUCTS_DIR)/{host_app_name}.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/{host_app_name}";'
+        if platform == "ios"
+        else f'BUNDLE_LOADER = "$(TEST_HOST)";\n\t\t\t\tTEST_HOST = "$(BUILT_PRODUCTS_DIR)/{host_app_name}.app/Contents/MacOS/{host_app_name}";'
+    )
+
+    pbx_content = pbx_content.replace(
+        "/* Begin PBXBuildFile section */",
+        "/* Begin PBXBuildFile section */\n" + "\n".join(build_files),
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* Begin PBXFileReference section */",
+        "/* Begin PBXFileReference section */\n"
+        + "\n".join(file_refs)
+        + f"\n\t\t{test_product_ref} /* {test_target_name}.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = {test_target_name}.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* Begin PBXFileReference section */",
+        "/* Begin PBXFileReference section */\n"
+        + "\n".join(file_refs)
+        + f"\n\t\t{test_product_ref} /* {test_target_name}.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = {test_target_name}.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};",
+        1,
+    )
+
+    native_target_block = f"""
+\t\t{test_target_id} /* {test_target_name} */ = {{
+\t\t\tisa = PBXNativeTarget;
+\t\t\tbuildConfigurationList = {test_config_list} /* Build configuration list for PBXNativeTarget "{test_target_name}" */;
+\t\t\tbuildPhases = (
+\t\t\t\t{test_sources_phase} /* Sources */,
+\t\t\t\t{test_frameworks_phase} /* Frameworks */,
+\t\t\t);
+\t\t\tbuildRules = (
+\t\t\t);
+\t\t\tdependencies = (
+\t\t\t\t{dep_id} /* PBXTargetDependency */,
+\t\t\t);
+\t\t\tname = {test_target_name};
+\t\t\tproductName = {test_target_name};
+\t\t\tproductReference = {test_product_ref} /* {test_target_name}.xctest */;
+\t\t\tproductType = "com.apple.product-type.bundle.unit-test";
+\t\t}};
+"""
+
+    proxy_block = f"""
+/* Begin PBXContainerItemProxy section */
+\t\t{proxy_id} /* PBXContainerItemProxy */ = {{
+\t\t\tisa = PBXContainerItemProxy;
+\t\t\tcontainerPortal = {uid("project")} /* Project object */;
+\t\t\tproxyType = 1;
+\t\t\tremoteGlobalIDString = {app_target_id};
+\t\t\tremoteInfo = {app_target_name};
+\t\t}};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+\t\t{dep_id} /* PBXTargetDependency */ = {{
+\t\t\tisa = PBXTargetDependency;
+\t\t\ttarget = {app_target_id} /* {app_target_name} */;
+\t\t\ttargetProxy = {proxy_id} /* PBXContainerItemProxy */;
+\t\t}};
+/* End PBXTargetDependency section */
+"""
+
+    test_group_block = f"""
+\t\t{test_group} /* {test_target_name} */ = {{
+\t\t\tisa = PBXGroup;
+\t\t\tchildren = (
+{chr(10).join(f"\t\t\t\t{uid(f'test-ref-{test_target_name}-{sf.name}')} /* {sf.name} */," for sf in test_files)}
+\t\t\t);
+\t\t\tpath = {test_target_name};
+\t\t\tsourceTree = "<group>";
+\t\t}};
+"""
+
+    test_sources_block = f"""
+\t\t{test_sources_phase} /* Sources */ = {{
+\t\t\tisa = PBXSourcesBuildPhase;
+\t\t\tbuildActionMask = 2147483647;
+\t\t\tfiles = (
+{chr(10).join(source_lines)}
+\t\t\t);
+\t\t\trunOnlyForDeploymentPostprocessing = 0;
+\t\t}};
+"""
+
+    test_frameworks_block = f"""
+\t\t{test_frameworks_phase} /* Frameworks */ = {{
+\t\t\tisa = PBXFrameworksBuildPhase;
+\t\t\tbuildActionMask = 2147483647;
+\t\t\tfiles = (
+\t\t\t);
+\t\t\trunOnlyForDeploymentPostprocessing = 0;
+\t\t}};
+"""
+
+    test_config_block = f"""
+\t\t{test_debug} /* Debug */ = {{
+\t\t\tisa = XCBuildConfiguration;
+\t\t\tbuildSettings = {{
+\t\t\t\tCODE_SIGN_STYLE = Automatic;
+\t\t\t\tGENERATE_INFOPLIST_FILE = YES;
+\t\t\t\t{host_settings}
+\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;
+\t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = {test_bundle_id};
+\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
+\t\t\t\tSDKROOT = {sdkroot};
+\t\t\t\tSUPPORTED_PLATFORMS = "{test_platform}";
+\t\t\t\tSWIFT_VERSION = 5.0;
+\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (
+\t\t\t\t\t"$(inherited)",
+\t\t\t\t\t"@executable_path/Frameworks",
+\t\t\t\t\t"@loader_path/Frameworks",
+\t\t\t\t);
+\t\t\t}};
+\t\t\tname = Debug;
+\t\t}};
+\t\t{test_release} /* Release */ = {{
+\t\t\tisa = XCBuildConfiguration;
+\t\t\tbuildSettings = {{
+\t\t\t\tCODE_SIGN_STYLE = Automatic;
+\t\t\t\tGENERATE_INFOPLIST_FILE = YES;
+\t\t\t\t{host_settings}
+\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;
+\t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = {test_bundle_id};
+\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
+\t\t\t\tSDKROOT = {sdkroot};
+\t\t\t\tSUPPORTED_PLATFORMS = "{test_platform}";
+\t\t\t\tSWIFT_VERSION = 5.0;
+\t\t\t}};
+\t\t\tname = Release;
+\t\t}};
+\t\t{test_config_list} /* Build configuration list for PBXNativeTarget "{test_target_name}" */ = {{
+\t\t\tisa = XCConfigurationList;
+\t\t\tbuildConfigurations = (
+\t\t\t\t{test_debug} /* Debug */,
+\t\t\t\t{test_release} /* Release */,
+\t\t\t);
+\t\t\tdefaultConfigurationIsVisible = 0;
+\t\t\tdefaultConfigurationName = Release;
+\t\t}};
+"""
+
+    pbx_content = pbx_content.replace(
+        "/* End PBXNativeTarget section */",
+        native_target_block + "\n/* End PBXNativeTarget section */",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* End PBXNativeTarget section */",
+        "/* End PBXNativeTarget section */\n" + proxy_block,
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* End PBXGroup section */",
+        test_group_block + "\n/* End PBXGroup section */",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* End PBXSourcesBuildPhase section */",
+        test_sources_block + "\n/* End PBXSourcesBuildPhase section */",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* End PBXFrameworksBuildPhase section */",
+        test_frameworks_block + "\n/* End PBXFrameworksBuildPhase section */",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        "/* End XCBuildConfiguration section */",
+        test_config_block + "\n/* End XCBuildConfiguration section */",
+        1,
+    )
+    injection = ""
+    pbx_content = pbx_content.replace(
+        f"\t\t\ttargets = (\n\t\t\t\t{app_target_id} /* {app_target_name} */,\n\t\t\t);",
+        f"\t\t\ttargets = (\n\t\t\t\t{app_target_id} /* {app_target_name} */,\n\t\t\t\t{test_target_id} /* {test_target_name} */,\n\t\t\t);",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        f"\t\t\tchildren = (\n\t\t\t\t{uid('nova-group')} /* NOVA */,",
+        f"\t\t\tchildren = (\n\t\t\t\t{uid('nova-group')} /* NOVA */,\n\t\t\t\t{test_group} /* {test_target_name} */,",
+        1,
+    )
+    pbx_content = pbx_content.replace(
+        f"\t\t\tchildren = (\n\t\t\t\t{uid('product-ref')} /* {app_target_name}.app */,",
+        f"\t\t\tchildren = (\n\t\t\t\t{uid('product-ref')} /* {app_target_name}.app */,\n\t\t\t\t{test_product_ref} /* {test_target_name}.xctest */,",
+        1,
+    )
+    return pbx_content
+
+
+def write_scheme_with_tests(
+    base: Path, proj_name: str, scheme_name: str, test_target_name: str
+) -> None:
+    scheme_dir = base / f"{proj_name}.xcodeproj" / "xcshareddata" / "xcschemes"
+    scheme_dir.mkdir(parents=True, exist_ok=True)
+    test_target_id = uid(f"test-target-{test_target_name}")
+    (scheme_dir / f"{scheme_name}.xcscheme").write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1500" version="1.7">
+   <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
+      <BuildActionEntries>
+         <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{uid("target")}" BuildableName="{scheme_name}.app" BlueprintName="{scheme_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
+         </BuildActionEntry>
+         <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{test_target_id}" BuildableName="{test_target_name}.xctest" BlueprintName="{test_target_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
+      <Testables>
+         <TestableReference skipped="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{test_target_id}" BuildableName="{test_target_name}.xctest" BlueprintName="{test_target_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
+      <BuildableProductRunnable runnableDebuggingMode="0">
+         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{uid("target")}" BuildableName="{scheme_name}.app" BlueprintName="{scheme_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>
+"""
+    )
+
+
 def main() -> None:
     ios_dir = ROOT / "apps" / "ios"
     macos_dir = ROOT / "apps" / "macos"
 
     ios_pbx = ios_dir / "NOVA.xcodeproj" / "project.pbxproj"
     ios_pbx.parent.mkdir(parents=True, exist_ok=True)
-    ios_pbx.write_text(
-        generate_pbxproj("NOVA", ios_dir / "NOVA", "ios", "com.nova.ios", "17.0", "NOVA/Info.plist")
+    ios_content = generate_pbxproj(
+        "NOVA", ios_dir / "NOVA", "ios", "com.nova.ios", "17.0", "NOVA/Info.plist"
     )
+    ios_tests = collect_swift_files(ios_dir / "NOVATests")
+    ios_content = inject_unit_test_target(
+        ios_content,
+        app_target_name="NOVA",
+        test_target_name="NOVATests",
+        test_bundle_id="com.nova.ios.tests",
+        test_files=ios_tests,
+        platform="ios",
+        host_app_name="NOVA",
+    )
+    ios_pbx.write_text(ios_content)
 
     macos_pbx = macos_dir / "NOVAGenie.xcodeproj" / "project.pbxproj"
     macos_pbx.parent.mkdir(parents=True, exist_ok=True)
-    macos_pbx.write_text(
-        generate_macos_pbxproj(
-            "NOVAGenie", macos_dir / "NOVA", "com.nova.macos.genie", "14.0", "NOVA/Info.plist"
-        )
+    macos_content = generate_macos_pbxproj(
+        "NOVAGenie", macos_dir / "NOVA", "com.nova.macos.genie", "14.0", "NOVA/Info.plist"
     )
+    macos_tests = collect_swift_files(macos_dir / "NOVAGenieTests")
+    macos_content = inject_unit_test_target(
+        macos_content,
+        app_target_name="NOVAGenie",
+        test_target_name="NOVAGenieTests",
+        test_bundle_id="com.nova.macos.tests",
+        test_files=macos_tests,
+        platform="macos",
+        host_app_name="NOVAGenie",
+    )
+    macos_pbx.write_text(macos_content)
 
-    # Create shared scheme
-    for proj_name, scheme_name in [("NOVA", "NOVA"), ("NOVAGenie", "NOVAGenie")]:
-        base = ios_dir if proj_name == "NOVA" else macos_dir
-        scheme_dir = base / f"{proj_name}.xcodeproj" / "xcshareddata" / "xcschemes"
-        scheme_dir.mkdir(parents=True, exist_ok=True)
-        (
-            scheme_dir / f"{scheme_name}.xcscheme"
-        ).write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
-<Scheme LastUpgradeVersion="1500" version="1.7">
-   <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
-      <BuildActionEntries>
-         <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
-            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="TARGET" BuildableName="{scheme_name}.app" BlueprintName="{scheme_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
-         </BuildActionEntry>
-      </BuildActionEntries>
-   </BuildAction>
-   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
-      <BuildableProductRunnable runnableDebuggingMode="0">
-         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="TARGET" BuildableName="{scheme_name}.app" BlueprintName="{scheme_name}" ReferencedContainer="container:{proj_name}.xcodeproj"/>
-      </BuildableProductRunnable>
-   </LaunchAction>
-</Scheme>
-""")
+    write_scheme_with_tests(ios_dir, "NOVA", "NOVA", "NOVATests")
+    write_scheme_with_tests(macos_dir, "NOVAGenie", "NOVAGenie", "NOVAGenieTests")
 
     print(f"Generated {ios_pbx}")
     print(f"Generated {macos_pbx}")
+    print(f"iOS pbxproj sha256: {hashlib.sha256(ios_pbx.read_bytes()).hexdigest()}")
+    print(f"macOS pbxproj sha256: {hashlib.sha256(macos_pbx.read_bytes()).hexdigest()}")
 
 
 if __name__ == "__main__":

@@ -1,27 +1,36 @@
 import SwiftUI
 
 struct MacDevicesView: View {
-    private let devices = [
-        ("M3 Worker", "online", "macos_worker"),
-        ("iPhone", "online", "iphone_client"),
-    ]
+    @EnvironmentObject private var appState: MacAppState
+    @State private var devices: [MacDevice] = []
+    @State private var status: MacSystemStatus?
 
     var body: some View {
-        List(devices, id: \.0) { device in
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(device.0).font(.headline)
-                    Text(device.2.replacingOccurrences(of: "_", with: " ").capitalized)
-                        .font(.caption).foregroundStyle(.secondary)
+        List {
+            if let status {
+                Section("Fleet") {
+                    LabeledContent("Online", value: "\(status.workersOnline)/\(status.workersTotal)")
+                    if !status.hasEligibleOnlineWorker {
+                        Text("Missions may queue until a worker reconnects.")
+                            .foregroundStyle(.orange)
+                    }
                 }
-                Spacer()
-                Circle().fill(device.1 == "online" ? .green : .orange).frame(width: 8, height: 8)
+            }
+            Section("Devices") {
+                ForEach(devices) { d in
+                    VStack(alignment: .leading) {
+                        Text(d.name).font(.headline)
+                        Text("\(d.deviceType) · \(d.status)").font(.caption)
+                    }
+                }
             }
         }
-        .navigationTitle("Devices")
+        .task { await load() }
     }
-}
 
-#Preview {
-    MacDevicesView()
+    private func load() async {
+        guard appState.isPaired else { return }
+        devices = (try? await appState.api.fetchDevices()) ?? []
+        status = try? await appState.api.fetchSystemStatus()
+    }
 }

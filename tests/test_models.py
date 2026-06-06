@@ -14,6 +14,7 @@ from nova_core.models.enums import (
 
 def test_mission_status_values() -> None:
     assert MissionStatus.PENDING.value == "pending"
+    assert MissionStatus.QUEUED_WAITING_FOR_WORKER.value == "queued_waiting_for_worker"
     assert MissionStatus.RUNNING.value == "running"
     assert MissionStatus.COMPLETED.value == "completed"
     assert MissionStatus.FAILED.value == "failed"

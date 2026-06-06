@@ -7,15 +7,19 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if appState.isExpanded {
-                ExpandedChatView()
+            if appState.shouldShowPairing {
+                CompactPairingView()
             } else {
-                CompactChatView()
+                GenieChatView(compact: !appState.isExpanded)
             }
             Divider()
             footer
         }
         .frame(width: 360)
+        .task {
+            await appState.pollWorkerHealth()
+            await appState.refreshRuntimeStatus()
+        }
     }
 
     private var header: some View {
@@ -29,6 +33,10 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            ProviderStatusBadge(
+                healthy: appState.providerHealthy,
+                label: appState.providerBadge
+            )
             WorkerHealthBadge(health: appState.workerHealth)
         }
         .padding()
@@ -50,6 +58,21 @@ struct MenuBarView: View {
             .frame(width: 120)
         }
         .padding(8)
+    }
+}
+
+struct ProviderStatusBadge: View {
+    let healthy: Bool
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(healthy ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+            Text(label)
+                .font(.caption2)
+        }
     }
 }
 

@@ -5,6 +5,7 @@ from enum import StrEnum
 
 class MissionStatus(StrEnum):
     PENDING = "pending"
+    QUEUED_WAITING_FOR_WORKER = "queued_waiting_for_worker"
     RUNNING = "running"
     AWAITING_APPROVAL = "awaiting_approval"
     COMPLETED = "completed"
@@ -17,7 +18,36 @@ class DeviceStatus(StrEnum):
     ONLINE = "online"
     OFFLINE = "offline"
     STALE = "stale"
+    REVOKED = "revoked"
     DECOMMISSIONED = "decommissioned"
+
+
+class TokenState(StrEnum):
+    ACTIVE = "active"
+    ROTATED = "rotated"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class PairingCodeStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    CLAIMED = "claimed"
+    EXPIRED = "expired"
+    REJECTED = "rejected"
+
+
+class ConnectionStatus(StrEnum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    RECONNECTING = "reconnecting"
+
+
+class PrivacyClass(StrEnum):
+    OWNER = "owner"
+    TRUSTED = "trusted"
+    RESTRICTED = "restricted"
+    ISOLATED = "isolated"
 
 
 class ApprovalStatus(StrEnum):
@@ -68,6 +98,25 @@ class TimelineEventType(StrEnum):
     APPROVAL_RESOLVED = "approval_resolved"
     WORKER_HEARTBEAT = "worker_heartbeat"
     SYSTEM_STATUS = "system_status"
+    WORKER_COMMAND_DISPATCHED = "worker_command_dispatched"
+    WORKER_COMMAND_PICKED_UP = "worker_command_picked_up"
+    WORKER_COMMAND_COMPLETED = "worker_command_completed"
+    WORKER_COMMAND_FAILED = "worker_command_failed"
+
+
+class WorkerCommandStatus(StrEnum):
+    PENDING = "pending"
+    DISPATCHED = "dispatched"
+    PICKED_UP = "picked_up"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    STALE_RECOVERED = "stale_recovered"
+    CANCELLED = "cancelled"
+
+
+class WorkerCommandRouting(StrEnum):
+    DEVICE = "device"
+    WORKER_CLASS = "worker_class"
 
 
 class DeviceCapability(StrEnum):

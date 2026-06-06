@@ -35,9 +35,13 @@ class SystemStatusResponse(BaseModel):
     control_plane: str
     database: str
     redis: str
+    streaming: str
     workers_online: int
     workers_total: int
     workers_stale: int
+    workers_offline: int
+    workers_revoked: int
+    has_eligible_online_worker: bool
     missions_active: int
     timestamp: datetime
 
@@ -49,6 +53,10 @@ class DeviceResponse(BaseModel):
     status: DeviceStatus
     hostname: str | None = None
     os_version: str | None = None
+    architecture: str | None = None
+    privacy_class: str | None = None
+    token_state: str | None = None
+    connection_status: str | None = None
     last_seen_at: datetime | None = None
     capabilities: list[str] = Field(default_factory=list)
 
@@ -88,6 +96,8 @@ class TimelineEventResponse(BaseModel):
     message: str
     payload: dict[str, Any] | None = None
     created_at: datetime
+    sequence_number: int | None = None
+    stream_id: str | None = None
 
 
 class AgentMessageResponse(BaseModel):
@@ -154,3 +164,141 @@ class ApiErrorDetail(BaseModel):
 
 class ApiErrorResponse(BaseModel):
     error: ApiErrorDetail
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    session_id: str | None = None
+    stream: bool = False
+
+
+class ChatResponse(BaseModel):
+    response: str
+    intent: str = "general"
+    blocked: bool = False
+    session_id: str | None = None
+    routing: dict[str, Any] | None = None
+    token_usage: dict[str, Any] | None = None
+
+
+class ChatMessageRecordResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    intent: str | None = None
+    blocked: bool = False
+    routing: dict[str, Any] | None = None
+    token_usage: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    provider_mode: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ChatMessageRecordResponse] = Field(default_factory=list)
+
+
+class ProviderHealthResponse(BaseModel):
+    provider: str
+    configured: bool
+    paid: bool
+    healthy: bool
+    mode: str
+    detail: str | None = None
+
+
+class RuntimeStatusResponse(BaseModel):
+    local_first: bool
+    paid_providers_enabled: bool
+    providers: list[ProviderHealthResponse]
+    local_model: str | None = None
+    ollama_reachable: bool = False
+    ollama_model_ready: bool = False
+    provider_badge: str | None = None
+    status_message: str | None = None
+
+
+class AutomationExecuteRequest(BaseModel):
+    provider: str
+    action: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    approval_id: str | None = None
+    dry_run: bool = False
+
+
+class AutomationRunResponse(BaseModel):
+    id: str
+    provider: str
+    action: str
+    status: str
+    requires_approval: bool
+    approval_id: str | None = None
+    result_payload: dict[str, Any] | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class ScheduledTaskCreateRequest(BaseModel):
+    title: str
+    provider: str
+    action: str
+    schedule: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScheduledTaskResponse(BaseModel):
+    id: str
+    title: str
+    provider: str
+    action: str
+    schedule: str
+    status: str
+    created_at: datetime
+
+
+class CompanionPromptRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    target_device_id: str | None = None
+
+
+class CompanionPromptResponse(BaseModel):
+    status: str
+    session_id: str
+    message_id: str
+    inbox_item_id: str | None = None
+
+
+class CompanionInboxItemResponse(BaseModel):
+    id: str
+    source_device_id: str | None = None
+    target_device_id: str
+    message: str
+    status: str
+    session_id: str | None = None
+    message_id: str | None = None
+    created_at: datetime
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+
+
+class ChatStreamCancelResponse(BaseModel):
+    stream_id: str
+    cancelled: bool
+
+
+class SchedulerStatusResponse(BaseModel):
+    paused: bool
+    task_count: int
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SchedulerTickResponse(BaseModel):
+    executed: bool
+    paused: bool
+    task_count: int
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    timestamp: str

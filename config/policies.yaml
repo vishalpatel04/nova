@@ -1,4 +1,21 @@
-# NOVA operational policies
+# NOVA operational policies — Slice 2A
+
+pairing:
+  require_approval: true
+  code_ttl_minutes: 15
+  token_ttl_days: 90
+  max_attempts_per_hour: 10
+  attempt_window_seconds: 3600
+  status_polls_per_minute: 30
+  token_retrievals_per_hour: 20
+  delivery_ttl_seconds: 900
+  max_devices_per_user: 10
+  trusted_device_classes:
+    - macos_worker
+    - macos_genie
+    - iphone_client
+  restricted_device_classes:
+    - friend_laptop
 
 approval:
   required_categories:
@@ -16,26 +33,85 @@ approval:
 audit:
   log_all_missions: true
   log_tool_invocations: true
+  log_pairing_attempts: true
+  log_token_operations: true
   retention_days: 365
 
 rate_limits:
   missions_per_hour: 100
   api_requests_per_minute: 300
+  pairing_attempts_per_hour: 10
+  pairing_status_polls_per_minute: 30
+  pairing_token_retrievals_per_hour: 20
+  pairing_delivery_ttl_seconds: 900
 
 security:
   never_store_plaintext_secrets: true
-  require_device_token: false  # Slice 1: dev mode
+  require_device_token: true
   allowed_origins:
     - http://localhost:*
     - nova://*
 
 worker:
   max_concurrent_tools: 3
+  stale_heartbeat_threshold_seconds: 90
+  offline_heartbeat_threshold_seconds: 300
   dangerous_tools_disabled:
     - shell
     - desktop_automation
     - applescript
+  allowed_read_only_categories:
+    - status
+    - search
+    - filesystem_read
+  privacy_classes:
+    owner:
+      description: Operator-owned devices
+      max_capabilities: all
+    trusted:
+      description: Trusted secondary devices
+      max_capabilities: read_only
+    restricted:
+      description: Friend or guest devices
+      max_capabilities: filesystem_read
+    isolated:
+      description: Cloud workers with no local access
+      max_capabilities: status
   reconnect:
     initial_delay_seconds: 1
     max_delay_seconds: 60
     multiplier: 2.0
+    jitter: true
+
+events:
+  redis_stream_max_len: 10000
+  replay_batch_size: 100
+  degraded_mode_on_redis_failure: true
+
+worker_dispatch:
+  stale_assignment_seconds: 300
+  max_command_attempts: 3
+  retry_delay_seconds: 5
+  read_only_commands:
+    - system_status
+    - hostname
+    - uptime
+    - operating_system_version
+    - cpu_architecture
+    - configured_capabilities
+    - list_directory
+    - read_file
+    - ripgrep_search
+
+safe_filesystem:
+  allowed_roots:
+    - ~/Projects/nova
+    - ~/Desktop/NOVA-Safe-Test
+  protected_roots:
+    - ~/NOVA_VAULT
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config
+  max_read_bytes: 65536
+  max_directory_entries: 200
+  max_search_matches: 50

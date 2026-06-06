@@ -41,6 +41,7 @@ class DeviceService:
         device_type: str,
         hostname: str | None = None,
         os_version: str | None = None,
+        architecture: str | None = None,
         capabilities: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Device:
@@ -54,6 +55,7 @@ class DeviceService:
             device.device_type = device_type
             device.hostname = hostname
             device.os_version = os_version
+            device.architecture = architecture
             device.status = DeviceStatus.REGISTERED.value
             device.metadata_json = metadata
         else:
@@ -64,6 +66,7 @@ class DeviceService:
                 device_type=device_type,
                 hostname=hostname,
                 os_version=os_version,
+                architecture=architecture,
                 status=DeviceStatus.REGISTERED.value,
                 metadata_json=metadata,
             )

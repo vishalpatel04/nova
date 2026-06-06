@@ -3,9 +3,12 @@ import SwiftUI
 struct MacNovaOrbView: View {
     @State private var isPulsing = false
     var size: CGFloat = 48
+    var isActive: Bool = false
+    var onTap: (() -> Void)?
 
     var body: some View {
-        ZStack {
+        Button(action: { onTap?() }) {
+            ZStack {
             Circle()
                 .fill(MacDesignTokens.novaBlue.opacity(0.3))
                 .frame(width: size * 1.3, height: size * 1.3)
@@ -19,7 +22,9 @@ struct MacNovaOrbView: View {
             Text("N")
                 .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
+            }
         }
+        .buttonStyle(.plain)
         .onAppear { isPulsing = true }
     }
 }

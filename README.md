@@ -34,9 +34,77 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
 ```bash
 make bootstrap    # venv, deps, Docker, migrations
 make dev          # start API on :8000
-make worker       # start worker daemon (separate terminal)
+
+# Pair worker (see docs/AUTH_AND_PAIRING.md)
+export NOVA_BOOTSTRAP_ADMIN_ENABLED=true
+bash scripts/generate-bootstrap-token.sh
+
+make worker       # set WORKER_TOKEN in .env first
 make test         # run pytest
 ```
+
+## Phase 3A — Interactive chat + safe tools
+
+NOVAGenie opens authenticated into interactive chat (`POST /api/v1/chat`). Safe read-only file tools, provider routing foundation, and automation scaffolds — **no shell/write/email/n8n execution**. See [Phase 3A Automation Foundation](docs/PHASE_3A_AUTOMATION_FOUNDATION.md).
+
+```bash
+export DEVICE_ID=arth-mac-client
+bash scripts/run-novagenie-local.sh
+# Try: system status | connected devices | help
+```
+
+## Phase 3B — Local-first assistant runtime
+
+NOVA now has persisted chat sessions, local-first provider execution, provider health checks,
+approval-gated automation runs, scheduled-task records, companion prompt queuing, and macOS local
+SQLite chat restore. Paid providers remain explicit opt-in. See [Phase 3B Runtime](docs/PHASE_3B_RUNTIME.md).
+
+## Slice 2C — Native hardening
+
+Automatic pairing polling, macOS Mission Room WebSocket, **⌃⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).
+
+```bash
+bash scripts/demo_live_nova.sh
+make install-worker
+python3 scripts/generate_xcode_projects.py
+xcodebuild test  # per docs/IOS_APP.md and docs/MACOS_APP.md
+```
+
+## Slice 2B — Native live clients
+
+iPhone and macOS apps pair via the API, store tokens in Keychain, stream mission timelines over WebSocket tickets, and support tap-to-talk voice missions. See [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md).
+
+```bash
+# Regenerate Xcode projects after adding Swift files
+python3 scripts/generate_xcode_projects.py
+cd apps/ios && xcodebuild -project NOVA.xcodeproj -scheme NOVA -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+cd apps/macos && xcodebuild -project NOVAGenie.xcodeproj -scheme NOVAGenie build
+```
+
+## Slice 2B — Worker command transport
+
+Redis Streams command dispatch with PostgreSQL authority. See [Scalable Worker Dispatch](docs/SCALABLE_WORKER_DISPATCH.md).
+
+```bash
+# Worker uses WS ticket + command_pickup_ack / command_result
+make worker
+```
+
+Authenticated pairing, durable mission events (PostgreSQL + Redis Streams), worker WebSocket, honest mission queuing.
+
+- [Auth & Pairing](docs/AUTH_AND_PAIRING.md)
+- [Realtime Events](docs/REALTIME_EVENTS.md)
+- [Worker Connection](docs/WORKER_CONNECTION.md)
+- [Phase 3A Automation Foundation](docs/PHASE_3A_AUTOMATION_FOUNDATION.md)
+- [Phase 3B Runtime](docs/PHASE_3B_RUNTIME.md)
+- [Native Client Slice 2C](docs/NATIVE_CLIENT_SLICE_2C.md)
+- [First Live Demo](docs/FIRST_LIVE_DEMO.md)
+- [iOS App](docs/IOS_APP.md)
+- [macOS App](docs/MACOS_APP.md)
+- [Action Button](docs/ACTION_BUTTON.md)
+- [Native Client Slice 2B](docs/NATIVE_CLIENT_SLICE_2B.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Slice 2A Plan](docs/SLICE_2A_BACKEND_LIVE_NERVOUS_SYSTEM_PLAN.md)
 
 ## Stack
 

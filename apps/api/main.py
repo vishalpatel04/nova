@@ -8,7 +8,16 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from apps.api.deps import AppState, set_app_state
-from apps.api.routes import router
+from apps.api.routes import (
+    chat_router,
+    core_router,
+    devices_router,
+    pairing_router,
+    runtime_router,
+    scheduler_router,
+    timeline_router,
+    worker_ws_router,
+)
 from apps.api.services.seed import seed_agents
 from nova_core import __version__
 from nova_core.models.database import dispose_db, get_session, init_db
@@ -67,6 +76,16 @@ def _validate_startup(settings: Settings) -> None:
     ]
     for cfg in required_configs:
         settings.load_yaml(cfg)
+    if settings.nova_env not in {"development", "test"}:
+        if settings.nova_token_pepper == "dev-pepper-change-in-production":
+            raise RuntimeError("NOVA_TOKEN_PEPPER must be set outside development/test")
+        if (
+            settings.nova_bootstrap_admin_enabled
+            and settings.nova_bootstrap_admin_token == "nova_bts_dev_bootstrap"
+        ):
+            raise RuntimeError(
+                "NOVA_BOOTSTRAP_ADMIN_TOKEN must be changed outside development/test"
+            )
     logger.info("startup_validation_passed")
 
 
@@ -79,6 +98,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="NOVA Control Plane",
         version=__version__,
+        description=(
+            "NOVA personal AI operating system — authenticated control plane "
+            "with durable mission events"
+        ),
         lifespan=lifespan,
     )
 
@@ -95,7 +118,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
-    app.include_router(router, prefix="/api/v1")
+    app.include_router(core_router, prefix="/api/v1")
+    app.include_router(chat_router, prefix="/api/v1")
+    app.include_router(pairing_router, prefix="/api/v1")
+    app.include_router(runtime_router, prefix="/api/v1")
+    app.include_router(scheduler_router, prefix="/api/v1")
+    app.include_router(devices_router, prefix="/api/v1")
+    app.include_router(timeline_router, prefix="/api/v1")
+    app.include_router(worker_ws_router, prefix="/api/v1")
     return app
 
 

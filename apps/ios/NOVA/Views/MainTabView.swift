@@ -9,6 +9,9 @@ struct MainTabView: View {
             NavigationStack { ChatView() }
                 .tabItem { Label("Chat", systemImage: "bubble.left.fill") }
 
+            NavigationStack { CompanionInboxView() }
+                .tabItem { Label("Companion", systemImage: "tray.full") }
+
             NavigationStack { MissionRoomView() }
                 .tabItem { Label("Missions", systemImage: "list.bullet.rectangle") }
 
@@ -18,6 +21,7 @@ struct MainTabView: View {
             NavigationStack {
                 List {
                     NavigationLink("Devices") { DevicesView() }
+                    NavigationLink("Pairing") { PairingView() }
                     NavigationLink("Settings") { SettingsView() }
                 }
                 .navigationTitle("More")

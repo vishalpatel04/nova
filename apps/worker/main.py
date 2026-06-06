@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from apps.worker.capabilities import capability_report, detect_capabilities
 from apps.worker.client import ControlPlaneClient
+from apps.worker.ws_client import WorkerWebSocketClient
 from nova_core.schemas.settings import WorkerSettings, get_worker_settings
 from nova_core.sentry.logging import configure_logging, get_logger
 
@@ -22,8 +23,10 @@ class WorkerDaemon:
         self.client = ControlPlaneClient(settings)
         self._running = False
         self._task: asyncio.Task[None] | None = None
+        self._ws_task: asyncio.Task[None] | None = None
         self._reconnect_delay = 1.0
         self._device_id = settings.device_id or f"worker-{uuid.uuid4().hex[:12]}"
+        self._ws_client: WorkerWebSocketClient | None = None
 
     @property
     def device_id(self) -> str:
@@ -39,12 +42,25 @@ class WorkerDaemon:
 
     async def start(self) -> None:
         self._running = True
-        await self._register_with_retry()
-        self._task = asyncio.create_task(self._heartbeat_loop())
-        logger.info("worker_started", device_id=self.device_id)
+        if self.settings.worker_ws_enabled and self.settings.resolved_worker_token:
+            self._ws_client = WorkerWebSocketClient(self.settings, self.device_id, self.device_name)
+            self._ws_task = asyncio.create_task(self._ws_client.run())
+            logger.info("worker_ws_mode", device_id=self.device_id)
+        else:
+            await self._register_with_retry()
+            self._task = asyncio.create_task(self._heartbeat_loop())
+            logger.info("worker_rest_mode", device_id=self.device_id)
 
     async def stop(self) -> None:
         self._running = False
+        if self._ws_client:
+            await self._ws_client.stop()
+        if self._ws_task:
+            self._ws_task.cancel()
+            try:
+                await self._ws_task
+            except asyncio.CancelledError:
+                pass
         if self._task:
             self._task.cancel()
             try:
@@ -97,10 +113,13 @@ def create_health_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, Any]:
         settings = get_worker_settings()
+        ws = _worker._ws_client if _worker else None
         return {
             "status": "ok" if _worker and _worker._running else "starting",
             "device_id": _worker.device_id if _worker else settings.device_id or "unassigned",
             "device_type": settings.device_type,
+            "connection_status": ws.connection_status if ws else "rest",
+            "status_report": ws.status_report() if ws else {},
         }
 
     return app

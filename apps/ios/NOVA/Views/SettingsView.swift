@@ -7,30 +7,44 @@ struct SettingsView: View {
         Form {
             Section("Connection") {
                 TextField("API URL", text: $appState.apiBaseURL)
-                    .textContentType(.URL)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                Button("Save") { appState.updateBaseURL(appState.apiBaseURL) }
+                LabeledContent("Paired", value: appState.isPaired ? "Yes" : "No")
+                NavigationLink("Pair device") { PairingView() }
+                if appState.isPaired {
+                    Button("Sign out", role: .destructive) {
+                        appState.api.clearToken()
+                        appState.refreshPairingState()
+                    }
+                }
             }
             Section("Permissions") {
-                HStack {
-                    Text("Microphone")
-                    Spacer()
-                    Text(appState.microphonePermission == .authorized ? "Granted" : "Not granted")
-                        .foregroundStyle(.secondary)
+                LabeledContent("Microphone", value: label(appState.microphonePermission))
+                LabeledContent("Speech", value: label(appState.speechPermission))
+                Button("Request permissions") {
+                    Task {
+                        await appState.requestMicrophonePermission()
+                        await appState.requestSpeechPermission()
+                    }
                 }
             }
+            Section("Shortcuts") {
+                Text("Add “Start NOVA Listening” from the Shortcuts app to assign Action Button or Control Center.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("About") {
-                HStack {
-                    Text("Version")
-                    Spacer()
-                    Text("0.1.0")
-                        .foregroundStyle(.secondary)
-                }
+                LabeledContent("Version", value: "0.2.0")
             }
         }
         .navigationTitle("Settings")
     }
-}
 
-#Preview {
-    NavigationStack { SettingsView().environmentObject(AppState()) }
+    private func label(_ mic: MicrophonePermission) -> String {
+        mic == .authorized ? "Granted" : "Not granted"
+    }
+
+    private func label(_ speech: SpeechPermission) -> String {
+        speech == .authorized ? "Granted" : "Not granted"
+    }
 }

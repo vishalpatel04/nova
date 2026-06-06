@@ -6,7 +6,10 @@ struct NOVAApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if appState.hasCompletedOnboarding {
+            if !appState.isPaired {
+                NavigationStack { PairingView() }
+                    .environmentObject(appState)
+            } else if appState.hasCompletedOnboarding {
                 MainTabView()
                     .environmentObject(appState)
             } else {
