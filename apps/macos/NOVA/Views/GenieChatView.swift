@@ -5,18 +5,30 @@ struct GenieChatView: View {
     @StateObject private var voice = VoiceRuntime()
     @FocusState private var inputFocused: Bool
 
+    private let quickSuggestions = [
+        "system status",
+        "connected devices",
+        "list directory ~/Projects/nova",
+        "repo analysis",
+        "what can you do?",
+    ]
+
     var compact: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
             statusBar
             messageList
+            if !compact {
+                suggestionBar
+            }
             if let error = appState.chatError {
                 errorBanner(error)
             }
             chatInputBar
         }
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        .task { await appState.refreshRuntimeStatus() }
         .onChange(of: appState.summonListen) { _, listen in
             if listen {
                 appState.summonListen = false
@@ -28,7 +40,7 @@ struct GenieChatView: View {
                 appState.chatDraft = transcript
             }
         }
-        .onChange(of: appState.chatDraft) { _, draft in
+        .onChange(of: appState.chatDraft) { _, _ in
             appState.persistChatSnapshot()
         }
     }
@@ -38,9 +50,15 @@ struct GenieChatView: View {
             Circle()
                 .fill(appState.providerHealthy ? Color.green : Color.orange)
                 .frame(width: 6, height: 6)
-            Text(appState.providerModeLabel)
+            Text(appState.providerBadge)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let hint = appState.localModelStatusMessage, !appState.providerHealthy {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+            }
             if appState.isChatStreaming {
                 ProgressView().controlSize(.mini)
                 Text("Streaming…")
@@ -74,10 +92,12 @@ struct GenieChatView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     if appState.chatMessages.isEmpty {
-                        Text("Ask about system status, devices, missions, or safe read-only files.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 8)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(appState.providerHealthy ? MacAppState.welcomeText : (appState.localModelStatusMessage ?? "Local model unavailable. Start Ollama."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 8)
                     }
                     ForEach(appState.chatMessages) { message in
                         ChatBubble(message: message)
@@ -103,6 +123,24 @@ struct GenieChatView: View {
             .onChange(of: appState.chatMessages.last?.content) { _, _ in
                 scrollToBottom(proxy: proxy)
             }
+        }
+    }
+
+    private var suggestionBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(quickSuggestions, id: \.self) { suggestion in
+                    Button(suggestion) {
+                        appState.chatDraft = suggestion
+                        sendMessage()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
         }
     }
 

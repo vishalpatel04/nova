@@ -202,7 +202,7 @@ async def test_code_runtime_chat_commands(auth_client: AsyncClient, paired_clien
     analysis = await auth_client.post("/api/v1/chat", json={"message": "repo analysis"})
     assert analysis.status_code == 200
     assert analysis.json()["blocked"] is False
-    assert "python=True" in analysis.json()["response"]
+    assert "Python: yes" in analysis.json()["response"]
 
     explain = await auth_client.post(
         "/api/v1/chat", json={"message": "explain code ~/Projects/nova/README.md"}

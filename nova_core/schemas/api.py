@@ -214,6 +214,11 @@ class RuntimeStatusResponse(BaseModel):
     local_first: bool
     paid_providers_enabled: bool
     providers: list[ProviderHealthResponse]
+    local_model: str | None = None
+    ollama_reachable: bool = False
+    ollama_model_ready: bool = False
+    provider_badge: str | None = None
+    status_message: str | None = None
 
 
 class AutomationExecuteRequest(BaseModel):

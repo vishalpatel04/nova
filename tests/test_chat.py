@@ -86,7 +86,7 @@ async def test_chat_blocks_secret_read_path(
     result = await db_session.execute(
         select(AuditEvent)
         .where(AuditEvent.action == "chat.action_blocked")
-        .where(AuditEvent.details["reason"].as_string() == "safe_path_block")
+        .where(AuditEvent.details["reason"].as_string() == "protected_path_block")
     )
     assert result.scalars().first() is not None
 

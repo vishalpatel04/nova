@@ -27,6 +27,13 @@ final class MacAppState: ObservableObject {
     @Published var isChatStreaming = false
     @Published var providerHealthy = false
     @Published var providerModeLabel = "local"
+    @Published var providerBadge = "local"
+    @Published var localModelStatusMessage: String?
+
+    static let welcomeText = """
+    Local model ready. Ask naturally or try a quick suggestion below.
+    Commands: system status · connected devices · safe read-only files.
+    """
 
     let api = NOVAAPIClient.shared
     let chatStreamClient = ChatStreamClient()
@@ -322,10 +329,23 @@ final class MacAppState: ObservableObject {
         guard isPaired else { return }
         do {
             let status = try await api.fetchRuntimeStatus()
-            providerHealthy = status.providers.first(where: { $0.provider == "local" })?.healthy ?? false
-            providerModeLabel = status.localFirst ? "local-first" : "remote"
+            providerHealthy = status.ollamaReachable && status.ollamaModelReady
+            if let badge = status.providerBadge, !badge.isEmpty {
+                providerBadge = badge
+                providerModeLabel = badge
+            } else if status.ollamaReachable {
+                providerModeLabel = "local"
+                providerBadge = "local"
+            } else {
+                providerModeLabel = "offline"
+                providerBadge = "offline"
+            }
+            localModelStatusMessage = status.statusMessage
         } catch {
             providerHealthy = false
+            providerModeLabel = "offline"
+            providerBadge = "offline"
+            localModelStatusMessage = "Local model unavailable. Start Ollama."
         }
     }
 

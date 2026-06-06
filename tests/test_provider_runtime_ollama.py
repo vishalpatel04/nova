@@ -65,7 +65,7 @@ async def test_infer_uses_resolved_model_not_hardcoded_default(
 
 @pytest.mark.asyncio
 async def test_infer_degraded_when_no_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    runtime = ProviderRuntime(Settings())
+    runtime = ProviderRuntime(Settings(**{"NOVA_OLLAMA_MODEL": ""}))
 
     async def fake_fetch(_provider):  # type: ignore[no-untyped-def]
         return []

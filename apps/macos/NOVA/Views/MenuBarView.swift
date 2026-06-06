@@ -33,7 +33,10 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            ProviderStatusBadge(healthy: appState.providerHealthy, mode: appState.providerModeLabel)
+            ProviderStatusBadge(
+                healthy: appState.providerHealthy,
+                label: appState.providerBadge
+            )
             WorkerHealthBadge(health: appState.workerHealth)
         }
         .padding()
@@ -60,14 +63,14 @@ struct MenuBarView: View {
 
 struct ProviderStatusBadge: View {
     let healthy: Bool
-    let mode: String
+    let label: String
 
     var body: some View {
         HStack(spacing: 4) {
             Circle()
                 .fill(healthy ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(mode)
+            Text(label)
                 .font(.caption2)
         }
     }

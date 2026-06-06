@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,16 @@ from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
 from nova_core.tools.code_runtime import CodeRuntime
 from nova_core.tools.policy import BLOCKED_MESSAGE, ToolDecision, ToolPolicy
+from nova_core.tools.protected_paths import (
+    PROTECTED_PATH_MESSAGE,
+    is_protected_path,
+    sanitize_path_for_log,
+)
+from nova_core.tools.provider_security import (
+    FileTransmissionDecision,
+    evaluate_file_transmission,
+    is_cloud_provider,
+)
 from nova_core.tools.safe_readonly import SafeReadonlyTools
 
 HELP_TEXT = """NOVA Phase 3A commands:
@@ -71,8 +81,16 @@ class ChatService:
         await sessions.append_message(chat_session, role="user", content=text)
 
         if self._policy.is_unsafe_request_text(text):
-            await self._audit_blocked(principal, text, reason="unsafe_keyword")
-            response = self._blocked_response(session_id=chat_session.id)
+            preview = self._shell_command_preview(text)
+            await self._audit_blocked(principal, preview, reason="unsafe_keyword")
+            response = self._blocked_response(
+                session_id=chat_session.id,
+                extra=(
+                    f" Shell commands require approval. Requested: `{preview}`"
+                    if "shell" in text.lower() or "rm " in text.lower()
+                    else None
+                ),
+            )
             await sessions.append_message(
                 chat_session,
                 role="assistant",
@@ -115,8 +133,10 @@ class ChatService:
         }.get(intent)
 
         if handler:
-            body = await handler(principal, args)
-            if body.startswith(BLOCKED_MESSAGE):
+            body = await cast(Callable[..., Awaitable[str]], handler)(
+                principal, args, routing=routing
+            )
+            if body.startswith("Blocked:"):
                 response = self._response(
                     body,
                     intent="blocked",
@@ -176,8 +196,16 @@ class ChatService:
         }
 
         if self._policy.is_unsafe_request_text(text):
-            await self._audit_blocked(principal, text, reason="unsafe_keyword")
-            response = self._blocked_response(session_id=chat_session.id)
+            preview = self._shell_command_preview(text)
+            await self._audit_blocked(principal, preview, reason="unsafe_keyword")
+            response = self._blocked_response(
+                session_id=chat_session.id,
+                extra=(
+                    f" Shell commands require approval. Requested: `{preview}`"
+                    if "shell" in text.lower() or "rm " in text.lower()
+                    else None
+                ),
+            )
             async for event in self._emit_full_response(sessions, chat_session, response):
                 if cancel and cancel.cancelled:
                     yield {"event": "cancelled", "data": {}}
@@ -225,8 +253,10 @@ class ChatService:
         }.get(intent)
 
         if handler:
-            body = await handler(principal, args)
-            if body.startswith(BLOCKED_MESSAGE):
+            body = await cast(Callable[..., Awaitable[str]], handler)(
+                principal, args, routing=routing
+            )
+            if body.startswith("Blocked:"):
                 response = self._response(
                     body,
                     intent="blocked",
@@ -361,7 +391,7 @@ class ChatService:
     def _parse_intent(self, text: str) -> tuple[str, dict[str, str]]:
         lowered = text.lower().strip()
 
-        if lowered in {"help", "?", "commands"}:
+        if lowered in {"help", "?", "commands", "what can you do", "what can you do?"}:
             return "help", {}
 
         if lowered in {"system status", "status", "system_status"}:
@@ -415,30 +445,37 @@ class ChatService:
 
         return "general", {}
 
-    async def _system_status(self, _principal: Principal, _args: dict[str, str]) -> str:
+    async def _system_status(self, _principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
         availability = await get_worker_availability(self.session, self.settings)
         active = await self.session.execute(
             select(Mission).where(Mission.status == MissionStatus.RUNNING.value)
         )
         running = len(active.scalars().all())
+        stale = availability["workers_stale"]
+        offline = availability["workers_offline"]
         return (
-            f"Control plane healthy. Workers online: {availability['workers_online']}/"
-            f"{availability['workers_total']} (stale {availability['workers_stale']}, "
-            f"offline {availability['workers_offline']}). Active missions: {running}."
+            "System Status\n"
+            "─────────────\n"
+            "Control plane: healthy\n"
+            f"Workers online: {availability['workers_online']}/{availability['workers_total']}\n"
+            f"  stale: {stale}  offline: {offline}\n"
+            f"Active missions: {running}"
         )
 
-    async def _connected_devices(self, _principal: Principal, _args: dict[str, str]) -> str:
+    async def _connected_devices(
+        self, _principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
         svc = DeviceService(self.session, self.settings)
         devices = await svc.list_devices()
         if not devices:
-            return "No connected devices."
+            return "Connected Devices\n───────────────\n(no devices paired)"
         lines = [
-            f"- {d.name} ({d.id}) type={d.device_type} status={d.status} conn={d.connection_status}"
+            f"• {d.name}\n  id: {d.id}\n  type: {d.device_type}  status: {d.status}"
             for d in devices
         ]
-        return "Connected devices:\n" + "\n".join(lines)
+        return "Connected Devices\n───────────────\n" + "\n\n".join(lines)
 
-    async def _worker_status(self, _principal: Principal, _args: dict[str, str]) -> str:
+    async def _worker_status(self, _principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
         availability = await get_worker_availability(self.session, self.settings)
         eligible = "yes" if availability["has_eligible_online_worker"] else "no"
         online = availability["workers_online"]
@@ -450,7 +487,9 @@ class ChatService:
             f"Eligible online worker: {eligible}."
         )
 
-    async def _recent_missions(self, _principal: Principal, _args: dict[str, str]) -> str:
+    async def _recent_missions(
+        self, _principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
         result = await self.session.execute(
             select(Mission).order_by(Mission.created_at.desc()).limit(10)
         )
@@ -461,7 +500,7 @@ class ChatService:
         return "Recent missions:\n" + "\n".join(lines)
 
     async def _create_system_status_mission(
-        self, principal: Principal, args: dict[str, str]
+        self, principal: Principal, args: dict[str, str], **_kw: Any
     ) -> str:
         svc = MissionService(self.session, self.settings)
         mission = await svc.create_and_run(
@@ -473,48 +512,79 @@ class ChatService:
         )
         return f"Created system_status mission {mission.id} with status {mission.status}."
 
-    async def _worker_capabilities(self, _principal: Principal, _args: dict[str, str]) -> str:
+    async def _worker_capabilities(
+        self, _principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
         from apps.worker.commands import execute_read_only_command
 
         payload = execute_read_only_command("configured_capabilities")
         caps = payload.get("capabilities", [])
         return "Worker capabilities:\n" + "\n".join(f"- {c}" for c in caps)
 
-    async def _list_directory(self, principal: Principal, args: dict[str, str]) -> str:
+    async def _list_directory(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        routing: Any | None = None,
+        **_kw: Any,
+    ) -> str:
+        path = args.get("path", ".")
+        blocked = await self._guard_path_access(principal, path, routing)
+        if blocked:
+            return blocked
         evaluation = self._policy.evaluate("list_directory", category="filesystem_read")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
-            await self._audit_blocked(principal, args.get("path", ""), reason="policy_block")
+            await self._audit_blocked(principal, sanitize_path_for_log(path), reason="policy_block")
             return BLOCKED_MESSAGE
-        result = self._safe_tools.list_directory(args.get("path", "."))
+        result = self._safe_tools.list_directory(path)
         if not result.success:
-            if self._is_safe_tool_policy_error(result.error):
-                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
-                return BLOCKED_MESSAGE
-            return f"Error: {result.error}"
+            return await self._handle_tool_error(principal, path, result.error)
         output = result.output
         assert isinstance(output, dict)
         entries = output.get("entries", [])
-        names = ", ".join(str(e.get("name")) for e in entries[:20])
-        return f"Directory {output.get('path')}: {names or '(empty)'}"
+        lines = [f"  {'📁' if e.get('is_dir') else '📄'} {e.get('name')}" for e in entries[:30]]
+        body = "\n".join(lines) if lines else "  (empty)"
+        truncated = " (truncated)" if output.get("truncated") else ""
+        return f"Directory: {output.get('path')}{truncated}\n{body}"
 
-    async def _read_file(self, principal: Principal, args: dict[str, str]) -> str:
+    async def _read_file(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        routing: Any | None = None,
+        **_kw: Any,
+    ) -> str:
+        path = args.get("path", "")
+        blocked = await self._guard_path_access(principal, path, routing)
+        if blocked:
+            return blocked
         evaluation = self._policy.evaluate("read_file", category="filesystem_read")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
-            await self._audit_blocked(principal, args.get("path", ""), reason="policy_block")
+            await self._audit_blocked(principal, sanitize_path_for_log(path), reason="policy_block")
             return BLOCKED_MESSAGE
-        result = self._safe_tools.read_file(args.get("path", ""))
+        result = self._safe_tools.read_file(path)
         if not result.success:
-            if self._is_safe_tool_policy_error(result.error):
-                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
-                return BLOCKED_MESSAGE
-            return f"Error: {result.error}"
+            return await self._handle_tool_error(principal, path, result.error)
         output = result.output
         assert isinstance(output, dict)
         content = str(output.get("content", ""))
         preview = content[:1200] + ("…" if len(content) > 1200 else "")
-        return f"File {output.get('path')} ({output.get('size')} bytes):\n{preview}"
+        return f"File: {output.get('path')}\nSize: {output.get('size')} bytes\n\n{preview}"
 
-    async def _ripgrep_search(self, principal: Principal, args: dict[str, str]) -> str:
+    async def _ripgrep_search(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        routing: Any | None = None,
+        **_kw: Any,
+    ) -> str:
+        path = args.get("path", ".")
+        blocked = await self._guard_path_access(principal, path, routing)
+        if blocked:
+            return blocked
         evaluation = self._policy.evaluate("ripgrep_search", category="search")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
             await self._audit_blocked(principal, args.get("pattern", ""), reason="policy_block")
@@ -524,14 +594,11 @@ class ChatService:
             args.get("path", "."),
         )
         if not result.success:
-            if self._is_safe_tool_policy_error(result.error):
-                await self._audit_blocked(
-                    principal,
-                    f"{args.get('pattern', '')} {args.get('path', '')}".strip(),
-                    reason="safe_path_block",
-                )
-                return BLOCKED_MESSAGE
-            return f"Error: {result.error}"
+            return await self._handle_tool_error(
+                principal,
+                f"{args.get('pattern', '')} {path}".strip(),
+                result.error,
+            )
         output = result.output
         assert isinstance(output, dict)
         matches = output.get("matches", [])
@@ -541,32 +608,52 @@ class ChatService:
         suffix = " (truncated)" if output.get("truncated") else ""
         return f"Matches{suffix}:\n" + "\n".join(lines)
 
-    async def _repo_analysis(self, principal: Principal, args: dict[str, str]) -> str:
-        result = self._code_runtime.repo_analysis(args.get("path", "~/Projects/nova"))
+    async def _repo_analysis(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        routing: Any | None = None,
+        **_kw: Any,
+    ) -> str:
+        path = args.get("path", "~/Projects/nova")
+        blocked = await self._guard_path_access(principal, path, routing)
+        if blocked:
+            return blocked
+        result = self._code_runtime.repo_analysis(path)
         if not result.success:
-            if self._is_safe_tool_policy_error(result.error):
-                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
-                return BLOCKED_MESSAGE
-            return f"Error: {result.error}"
+            return await self._handle_tool_error(principal, path, result.error)
         signals = result.output["signals"]
         return (
-            f"Repo {result.output['repo']} has python={signals['python']}, "
-            f"ios={signals['ios']}, docs={signals['docs']}, tests={signals['tests']}."
+            f"Repo Analysis: {result.output['repo']}\n"
+            f"  Python: {'yes' if signals['python'] else 'no'}\n"
+            f"  iOS: {'yes' if signals['ios'] else 'no'}\n"
+            f"  Docs: {'yes' if signals['docs'] else 'no'}\n"
+            f"  Tests: {'yes' if signals['tests'] else 'no'}"
         )
 
-    async def _explain_code(self, principal: Principal, args: dict[str, str]) -> str:
-        result = self._code_runtime.explain_code(args.get("path", ""))
+    async def _explain_code(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        routing: Any | None = None,
+        **_kw: Any,
+    ) -> str:
+        path = args.get("path", "")
+        blocked = await self._guard_path_access(principal, path, routing)
+        if blocked:
+            return blocked
+        result = self._code_runtime.explain_code(path)
         if not result.success:
-            if self._is_safe_tool_policy_error(result.error):
-                await self._audit_blocked(principal, args.get("path", ""), reason="safe_path_block")
-                return BLOCKED_MESSAGE
-            return f"Error: {result.error}"
+            return await self._handle_tool_error(principal, path, result.error)
         return (
-            f"{result.output['path']} has {result.output['line_count']} lines. "
+            f"Code: {result.output['path']}\n"
+            f"Lines: {result.output['line_count']}\n\n"
             f"{result.output['summary']}"
         )
 
-    async def _patch_plan(self, principal: Principal, args: dict[str, str]) -> str:
+    async def _patch_plan(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
         await self._audit_blocked(
             principal,
             args.get("instruction", ""),
@@ -576,10 +663,67 @@ class ChatService:
         plan = "; ".join(result.output["plan"])
         return f"{BLOCKED_MESSAGE} Patch plan prepared for approval: {plan}."
 
+    async def _guard_path_access(
+        self,
+        principal: Principal,
+        path: str,
+        routing: Any | None = None,
+    ) -> str | None:
+        if is_protected_path(path):
+            await self._audit_blocked(
+                principal,
+                sanitize_path_for_log(path),
+                reason="protected_path_block",
+            )
+            return PROTECTED_PATH_MESSAGE
+        if routing is not None and is_cloud_provider(routing.provider):
+            evaluation = evaluate_file_transmission(routing.provider, path, approved=False)
+            if evaluation.decision != FileTransmissionDecision.ALLOW:
+                await self._audit_blocked(
+                    principal,
+                    sanitize_path_for_log(path),
+                    reason="cloud_file_approval_required",
+                )
+                return evaluation.message or BLOCKED_MESSAGE
+        return None
+
+    async def _handle_tool_error(
+        self,
+        principal: Principal,
+        path: str,
+        error: str | None,
+    ) -> str:
+        if not error:
+            return BLOCKED_MESSAGE
+        if error == PROTECTED_PATH_MESSAGE or is_protected_path(path):
+            await self._audit_blocked(
+                principal,
+                sanitize_path_for_log(path),
+                reason="protected_path_block",
+            )
+            return PROTECTED_PATH_MESSAGE
+        if self._is_safe_tool_policy_error(error):
+            await self._audit_blocked(
+                principal,
+                sanitize_path_for_log(path),
+                reason="safe_path_block",
+            )
+            return BLOCKED_MESSAGE
+        return f"Error: {error}"
+
     def _is_safe_tool_policy_error(self, error: str | None) -> bool:
         if not error:
             return False
+        if error == PROTECTED_PATH_MESSAGE:
+            return True
         return error.startswith(("Blocked path segment:", "Path not in allowlist:"))
+
+    def _shell_command_preview(self, message: str) -> str:
+        lowered = message.lower()
+        for prefix in ("run shell ", "execute command ", "run "):
+            if lowered.startswith(prefix):
+                return message[len(prefix) :].strip() or message.strip()
+        return message.strip()
 
     async def _audit_blocked(self, principal: Principal, message: str, *, reason: str) -> None:
         await record_audit_event(
@@ -639,9 +783,14 @@ class ChatService:
         title = text.strip().splitlines()[0][:80]
         return title or "NOVA Chat"
 
-    def _blocked_response(self, *, session_id: str | None = None) -> dict[str, Any]:
+    def _blocked_response(
+        self, *, session_id: str | None = None, extra: str | None = None
+    ) -> dict[str, Any]:
+        message = BLOCKED_MESSAGE
+        if extra:
+            message = f"{BLOCKED_MESSAGE}{extra}"
         return {
-            "response": BLOCKED_MESSAGE,
+            "response": message,
             "intent": "blocked",
             "blocked": True,
             "session_id": session_id,

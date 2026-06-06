@@ -295,6 +295,11 @@ struct MacRuntimeStatus: Decodable {
     let localFirst: Bool
     let paidProvidersEnabled: Bool
     let providers: [MacProviderHealth]
+    let localModel: String?
+    let ollamaReachable: Bool
+    let ollamaModelReady: Bool
+    let providerBadge: String?
+    let statusMessage: String?
 }
 
 struct MacProviderHealth: Decodable {

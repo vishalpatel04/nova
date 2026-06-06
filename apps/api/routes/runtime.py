@@ -20,6 +20,7 @@ from nova_core.models.orm import (
     Device,
     ScheduledTask,
 )
+from nova_core.providers.router import ProviderName
 from nova_core.providers.runtime import ProviderRuntime
 from nova_core.schemas.api import (
     AutomationExecuteRequest,
@@ -35,6 +36,7 @@ from nova_core.schemas.api import (
     ScheduledTaskResponse,
 )
 from nova_core.schemas.settings import get_settings
+from nova_core.tools.provider_security import scrub_runtime_detail
 
 router = APIRouter(tags=["runtime"])
 
@@ -46,6 +48,32 @@ async def runtime_status(
     settings = get_settings()
     runtime = ProviderRuntime(settings)
     checks = await runtime.health_checks()
+    local_check = next((c for c in checks if c.provider == ProviderName.LOCAL), None)
+    ollama_reachable = bool(local_check and local_check.healthy)
+    local_model: str | None = None
+    ollama_model_ready = False
+    status_message: str | None = None
+    provider_badge: str | None = None
+
+    if not ollama_reachable:
+        status_message = "Local model unavailable. Start Ollama."
+    else:
+        try:
+            available = await runtime._fetch_ollama_models(ProviderName.LOCAL)
+            local_model = await runtime._resolve_ollama_model(ProviderName.LOCAL)
+            ollama_model_ready = local_model in available or any(
+                name.startswith(local_model.split(":")[0]) for name in available
+            )
+            if ollama_model_ready:
+                provider_badge = f"local · {local_model}"
+                status_message = f"Local model active: {local_model}"
+            else:
+                status_message = (
+                    f"Model {local_model} not installed. Run: ollama pull {local_model}"
+                )
+        except Exception:
+            status_message = "Local model unavailable. Start Ollama."
+
     return RuntimeStatusResponse(
         local_first=True,
         paid_providers_enabled=settings.nova_paid_providers_enabled,
@@ -56,10 +84,15 @@ async def runtime_status(
                 paid=check.paid,
                 healthy=check.healthy,
                 mode=check.mode,
-                detail=check.detail,
+                detail=scrub_runtime_detail(check.detail),
             )
             for check in checks
         ],
+        local_model=local_model,
+        ollama_reachable=ollama_reachable,
+        ollama_model_ready=ollama_model_ready,
+        provider_badge=provider_badge,
+        status_message=status_message,
     )
 
 
