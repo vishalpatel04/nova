@@ -40,18 +40,18 @@ async def test_chat_stream_returns_sse_tokens(
 
 @pytest.mark.asyncio
 async def test_chat_stream_cancel_endpoint(auth_client: AsyncClient, paired_client_token) -> None:
-    device_id, token = paired_client_token
+    _device_id, token = paired_client_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
 
     token_obj = StreamCancelToken()
-    register(token_obj, owner_id=device_id)
+    register(token_obj, owner_id=_device_id)
     try:
         resp = await auth_client.post(f"/api/v1/chat/stream/{token_obj.stream_id}/cancel")
         assert resp.status_code == 200
         assert resp.json()["cancelled"] is True
         assert token_obj.cancelled is True
     finally:
-        unregister(token_obj.stream_id, owner_id=device_id)
+        unregister(token_obj.stream_id, owner_id=_device_id)
 
     missing = await auth_client.post("/api/v1/chat/stream/not-a-stream/cancel")
     assert missing.status_code == 200
@@ -158,7 +158,51 @@ async def test_companion_inbox_device_scoped(
     assert read.json()["status"] == "read"
 
     stored = await db_session.execute(select(CompanionInboxItem))
-    assert stored.scalar_one_or_none() is not None
+    assert stored.scalars().first() is not None
+
+
+@pytest.mark.asyncio
+async def test_companion_inbox_rejects_cross_device_read(
+    auth_client: AsyncClient, paired_client_token
+) -> None:
+    import uuid
+
+    _device_id, token = paired_client_token
+
+    other_device_id = f"test-client-{uuid.uuid4().hex[:8]}"
+    auth_client.headers["Authorization"] = "Bearer nova_bts_test_admin"
+    create_resp = await auth_client.post(
+        "/api/v1/pairing/codes",
+        json={"device_type": "iphone_client", "proposed_device_id": other_device_id},
+    )
+    assert create_resp.status_code == 201
+    code = create_resp.json()["code"]
+
+    claim_resp = await auth_client.post(
+        "/api/v1/pairing/claim",
+        json={
+            "code": code,
+            "device_id": other_device_id,
+            "name": "Other Client",
+            "device_type": "iphone_client",
+        },
+    )
+    assert claim_resp.status_code == 200, claim_resp.text
+    if claim_resp.json().get("status") in ("pending", "pending_approval"):
+        pairing_id = create_resp.json()["pairing_id"]
+        approve_resp = await auth_client.post(f"/api/v1/pairing/{pairing_id}/approve")
+        assert approve_resp.status_code == 200
+
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+
+    prompt_resp = await auth_client.post(
+        "/api/v1/companion/prompts",
+        json={"message": "Check status", "target_device_id": other_device_id},
+    )
+    assert prompt_resp.status_code == 202
+
+    inbox = await auth_client.get(f"/api/v1/companion/inbox?device_id={other_device_id}")
+    assert inbox.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -231,7 +275,7 @@ async def test_scheduler_tick_does_not_execute(
     audits = await db_session.execute(
         select(AuditEvent).where(AuditEvent.action == "scheduler.tick")
     )
-    assert audits.scalar_one_or_none() is not None
+    assert audits.scalars().first() is not None
 
 
 @pytest.mark.asyncio

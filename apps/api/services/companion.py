@@ -60,6 +60,8 @@ class CompanionInboxService:
         target_id = device_id or principal.device_id
         if not target_id:
             raise ValidationError("device_id is required for companion inbox")
+        if principal.device_id and target_id != principal.device_id:
+            raise UnauthorizedError("Inbox is only accessible for this device")
         await self.validate_target_device(principal, target_id)
         result = await self.session.execute(
             select(CompanionInboxItem)
