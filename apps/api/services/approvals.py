@@ -190,7 +190,14 @@ class ApprovalRequestService:
         *,
         expected_fingerprint: str,
     ) -> ApprovalRequest:
-        record = await self.get_owned(approval_id, principal)
+        result = await self.session.execute(
+            select(ApprovalRequest).where(ApprovalRequest.id == approval_id).with_for_update()
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise NotFoundError("approval_request", approval_id)
+        if record.user_id != principal.user_id or record.device_id != principal.device_id:
+            raise UnauthorizedError("Approval request ownership mismatch")
         if record.status != ActionApprovalStatus.APPROVED.value:
             raise ConflictError(f"Approval request is {record.status}, expected approved")
         if record.action_fingerprint != expected_fingerprint:
