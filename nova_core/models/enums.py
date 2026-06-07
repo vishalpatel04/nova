@@ -258,3 +258,47 @@ class PendingToolIntentStatus(StrEnum):
 
 class PendingToolIntentType(StrEnum):
     PERSONAL_SEARCH_SCOPE_CONFIRMATION = "personal_search.scope_confirmation"
+
+
+class MemoryAccessProfile(StrEnum):
+    MINIMAL = "minimal"
+    BROAD_LOCAL = "broad_local"
+    CUSTOM = "custom"
+
+
+class MemorySourceType(StrEnum):
+    HOME_DIRECTORY = "home_directory"
+    PROJECT = "project"
+    PERSONAL_FOLDER = "personal_folder"
+    EXTERNAL_DRIVE = "external_drive"
+    MANUAL_FOLDER = "manual_folder"
+
+
+class MemorySourceStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    EXCLUDED = "excluded"
+
+
+class MemoryIndexingState(StrEnum):
+    METADATA_ONLY = "metadata_only"
+    PENDING_DEEP = "pending_deep"
+    INDEXED = "indexed"
+    SKIPPED = "skipped"
+    DELETED = "deleted"
+
+
+class MemoryIndexJobType(StrEnum):
+    SCAN = "scan"
+    EXTRACT = "extract"
+    EMBED = "embed"
+    GRAPH = "graph"
+    CLEANUP = "cleanup"
+
+
+class MemoryIndexJobStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"

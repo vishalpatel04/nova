@@ -20,6 +20,7 @@ from apps.api.services.background_tasks import BackgroundTaskService
 from apps.api.services.coding_tasks import CodingTaskService
 from apps.api.services.devices import DeviceService
 from apps.api.services.git_workflow import GitWorkflowService
+from apps.api.services.memory_kernel import MemoryKernelService
 from apps.api.services.missions import MissionService
 from apps.api.services.notifications import NotificationService
 from apps.api.services.pending_tool_intents import PendingToolIntentService
@@ -43,6 +44,14 @@ from nova_core.capabilities.resolver import (
     resolve_chat_message,
 )
 from nova_core.devices.availability import get_worker_availability
+from nova_core.memory.access_policy import AccessProfile
+from nova_core.memory.project_history import (
+    format_last_failure,
+    format_open_loops,
+    format_yesterday_summary,
+    remember_project_decision,
+)
+from nova_core.memory.retrieval import build_memory_prompt_section
 from nova_core.models.enums import (
     BackgroundScheduleKind,
     BackgroundTaskType,
@@ -114,14 +123,26 @@ HELP_TEXT = """NOVA commands:
 - search my computer for <pattern> — prompts to search approved folders
 - remember that <fact> — save a user-approved memory
 - what do you remember about me? — list saved memory
+- what do you remember about <topic>? — search local memory
+- search my memory for <topic> — hybrid local memory search
+- memory status — local indexing and embedding health
+- enable broad local knowledge — index entire home (except NOVA_VAULT)
+- index my Mac — bounded local scan
+- pause indexing / resume indexing — control background indexer
+- show project history — project timeline from memory events
+- continue from yesterday / what did we do yesterday? — recent project activity
+- export my memory locally — JSON export (local only)
 - forget <memory key> — delete saved memory
+- forget everything about <topic> — purge topic from local memory
 - help — this message
 
 Patch apply requires separate approval + Apply Approved Patch action.
 Background tasks never auto-apply patches. Protected paths always blocked."""
 
 MAX_RECENT_CHAT_MESSAGES = 16
-MAX_MEMORY_LINES = 8
+MAX_MEMORY_LINES = 5
+MAX_MEMORY_CHUNKS = 5
+MAX_MEMORY_RELATIONSHIPS = 8
 MAX_CONTEXT_CHARS = 6000
 
 
@@ -236,6 +257,24 @@ class ChatService:
             "remember_memory": self._remember_memory,
             "forget_memory": self._forget_memory,
             "memory_lookup": self._memory_lookup,
+            "memory_enable_broad": self._memory_enable_broad,
+            "memory_disable_broad": self._memory_disable_broad,
+            "memory_status": self._memory_status,
+            "memory_index_mac": self._memory_index_mac,
+            "memory_pause_indexing": self._memory_pause_indexing,
+            "memory_resume_indexing": self._memory_resume_indexing,
+            "memory_index_progress": self._memory_index_progress,
+            "memory_search": self._memory_search,
+            "memory_recall": self._memory_recall,
+            "memory_forget_topic": self._memory_forget_topic,
+            "memory_forget_id": self._memory_forget_id,
+            "memory_export": self._memory_export,
+            "memory_find_files": self._memory_find_files,
+            "project_history": self._project_history,
+            "project_yesterday": self._project_yesterday,
+            "project_last_failure": self._project_last_failure,
+            "project_open_loops": self._project_open_loops,
+            "project_remember_decision": self._project_remember_decision,
         }.get(intent)
 
         if handler and intent != "general":
@@ -679,6 +718,71 @@ class ChatService:
         if memory_lookup is not None:
             return "memory_lookup", memory_lookup
 
+        if lowered in {"enable broad local knowledge", "enable broad local"}:
+            return "memory_enable_broad", {}
+
+        if lowered in {"disable broad local knowledge", "disable broad local"}:
+            return "memory_disable_broad", {}
+
+        if lowered in {"memory status", "show memory status"}:
+            return "memory_status", {}
+
+        if lowered in {"index my mac", "index my mac."}:
+            return "memory_index_mac", {}
+
+        if lowered == "pause indexing":
+            return "memory_pause_indexing", {}
+
+        if lowered == "resume indexing":
+            return "memory_resume_indexing", {}
+
+        if lowered in {"show indexing progress", "indexing progress"}:
+            return "memory_index_progress", {}
+
+        if lowered.startswith("search my memory for "):
+            return "memory_search", {"query": text[len("search my memory for ") :].strip()}
+
+        recall_match = re.match(r"^what do you remember about (.+?)\??$", text, re.I)
+        if recall_match and recall_match.group(1).strip().lower() not in {"me", "myself"}:
+            return "memory_recall", {"topic": recall_match.group(1).strip()}
+
+        if lowered.startswith("forget everything about "):
+            return "memory_forget_topic", {"topic": text[len("forget everything about ") :].strip()}
+
+        if lowered.startswith("forget memory "):
+            return "memory_forget_id", {"memory_id": text[len("forget memory ") :].strip()}
+
+        if lowered in {"export my memory locally", "export memory", "export my memory"}:
+            return "memory_export", {}
+
+        if lowered in {"show project history", "project history"}:
+            return "project_history", {}
+
+        if lowered in {
+            "continue from yesterday",
+            "what did we do yesterday?",
+            "what did we do yesterday",
+        }:
+            return "project_yesterday", {}
+
+        if lowered in {"what broke last time?", "what broke last time"}:
+            return "project_last_failure", {}
+
+        if lowered in {"show open loops", "open loops"}:
+            return "project_open_loops", {}
+
+        if lowered.startswith("remember this project decision:"):
+            return "project_remember_decision", {
+                "text": text[len("remember this project decision:") :].strip()
+            }
+
+        if lowered.startswith("find my ") and "file" in lowered:
+            return "memory_find_files", {"topic": text[len("find my ") :].strip()}
+
+        if lowered.startswith("search my mac for "):
+            pattern = text[len("search my mac for ") :].strip()
+            return "search_computer_prompt", {"pattern": pattern}
+
         broad_search = self._parse_broad_personal_search(text)
         if broad_search is not None:
             return "search_computer_prompt", broad_search
@@ -1050,6 +1154,15 @@ class ChatService:
         memories = await memory_svc.list_memories(principal, limit=MAX_MEMORY_LINES)
         project_svc = ProjectService(self.session, self.settings)
         active_project = await project_svc.get_active_project_or_none(principal)
+        kernel = MemoryKernelService(self.session, self.settings)
+        retrieval = await kernel.retrieve(
+            principal.user_id,
+            text,
+            session_id=chat_session.id,
+            project_root=active_project.project_root if active_project else None,
+            limit=MAX_MEMORY_CHUNKS,
+        )
+        memory_section = build_memory_prompt_section(retrieval, max_chars=1500)
 
         prompt_lines = [
             "You are NOVA, a concise desktop assistant.",
@@ -1063,6 +1176,8 @@ class ChatService:
             prompt_lines.append("Remembered facts:")
             for memory in memories[:MAX_MEMORY_LINES]:
                 prompt_lines.append(f"- {memory.key}: {memory.value_summary}")
+        if memory_section:
+            prompt_lines.append(memory_section)
         if recent_messages:
             prompt_lines.append("Recent conversation:")
             for record in recent_messages[-MAX_RECENT_CHAT_MESSAGES:]:
@@ -1114,6 +1229,15 @@ class ChatService:
             return "Usage: remember that <fact>"
         parsed = self._parse_memory_fact(statement)
         memory_svc = UserMemoryService(self.session)
+        kernel = MemoryKernelService(self.session, self.settings)
+        predicate = "stored_in" if "value_summary" in parsed else "related_to"
+        location_match = re.search(
+            r"(?:in|at|under|inside)\s+(?P<location>.+)$",
+            parsed.get("value_summary", ""),
+            re.I,
+        )
+        if location_match:
+            predicate = "stored_in"
         try:
             record = await memory_svc.remember(
                 principal,
@@ -1122,6 +1246,13 @@ class ChatService:
                 source="user",
                 confidence=0.9,
                 user_editable=True,
+            )
+            await kernel.remember_fact(
+                principal.user_id,
+                subject=parsed["key"],
+                predicate=predicate,
+                object_summary=parsed["value_summary"],
+                user_confirmed=True,
             )
         except Exception as exc:
             return f"Blocked: {exc}"
@@ -1134,7 +1265,9 @@ class ChatService:
         memory_svc = UserMemoryService(self.session)
         key = self._parse_memory_fact(statement).get("key", statement)
         deleted = await memory_svc.forget(principal, key)
-        if not deleted:
+        kernel = MemoryKernelService(self.session, self.settings)
+        kernel_counts = await kernel.forget_topic(principal.user_id, key)
+        if not deleted and kernel_counts["facts"] == 0 and kernel_counts["chunks"] == 0:
             return f"I don't have a saved memory for '{key}'."
         return f"Forgot {key}."
 
@@ -1149,7 +1282,197 @@ class ChatService:
             key_norm = self._normalize_memory_subject(memory.key)
             if subject_norm in key_norm or key_norm in subject_norm:
                 return memory.value_summary
+        kernel = MemoryKernelService(self.session, self.settings)
+        from nova_core.memory.retrieval import format_retrieval_result
+
+        result = await kernel.retrieve(principal.user_id, subject, limit=5)
+        for hit in result.hits:
+            if hit.kind == "fact" and hit.provenance == "memory_facts":
+                parts = hit.summary.split(" ", 2)
+                if len(parts) >= 3 and parts[1] == "stored_in":
+                    return parts[2]
+        if result.hits:
+            return format_retrieval_result(result)
+        location = args.get("location")
+        if location:
+            return f"{subject} is usually in {location}."
         return "I don't know that yet."
+
+    def _memory_kernel(self) -> MemoryKernelService:
+        return MemoryKernelService(self.session, self.settings)
+
+    async def _memory_enable_broad(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        await self._memory_kernel().set_access_profile(principal.user_id, AccessProfile.BROAD_LOCAL)
+        return (
+            "Broad local knowledge enabled. NOVA may index your home directory "
+            "(except ~/NOVA_VAULT, which remains permanently invisible)."
+        )
+
+    async def _memory_disable_broad(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        await self._memory_kernel().set_access_profile(principal.user_id, AccessProfile.MINIMAL)
+        return (
+            "Broad local knowledge disabled. "
+            "Using minimal profile (Desktop, Documents, Downloads, Projects)."
+        )
+
+    async def _memory_status(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        overview = await self._memory_kernel().status_overview(principal.user_id)
+        return (
+            f"Local memory status (local-only):\n"
+            f"- Access profile: {overview['access_profile']}\n"
+            f"- Indexing paused: {overview['indexing_paused']}\n"
+            f"- Documents discovered: {overview['documents_discovered']}\n"
+            f"- Documents indexed: {overview['documents_indexed']}\n"
+            f"- Chunks: {overview['chunks']}\n"
+            f"- Entities: {overview['entities']}\n"
+            f"- Relationships: {overview['relationships']}\n"
+            f"- Pending jobs: {overview['pending_jobs']}\n"
+            f"- Embeddings: {overview['embedding_health']}"
+        )
+
+    async def _memory_index_mac(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        result = await self._memory_kernel().scan_sources(principal.user_id)
+        processed = await self._memory_kernel().process_pending_jobs(principal.user_id, limit=10)
+        return (
+            f"Bounded local scan complete. Discovered {result.get('discovered', 0)} files; "
+            f"processed {processed} deep-index jobs."
+        )
+
+    async def _memory_pause_indexing(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        await self._memory_kernel().pause_indexing(principal.user_id)
+        return "Local indexing paused."
+
+    async def _memory_resume_indexing(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        await self._memory_kernel().resume_indexing(principal.user_id)
+        return "Local indexing resumed."
+
+    async def _memory_index_progress(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        return await self._memory_status(principal, _args, **_kw)
+
+    async def _memory_search(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        from nova_core.memory.retrieval import format_retrieval_result
+
+        query = args.get("query", "").strip()
+        if not query:
+            return "Usage: search my memory for <topic>"
+        result = await self._memory_kernel().retrieve(principal.user_id, query, limit=8)
+        return format_retrieval_result(result)
+
+    async def _memory_recall(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        return await self._memory_search(principal, args, **_kw)
+
+    async def _memory_forget_topic(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        topic = args.get("topic", "").strip()
+        if not topic:
+            return "Usage: forget everything about <topic>"
+        result = await self._memory_kernel().forget_topic(principal.user_id, topic)
+        return (
+            f"Forgot topic '{topic}': {result['facts']} facts, {result['chunks']} chunks removed."
+        )
+
+    async def _memory_forget_id(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        from nova_core.models.orm import MemoryFact
+
+        memory_id = args.get("memory_id", "").strip()
+        if not memory_id:
+            return "Usage: forget memory <id>"
+        fact = await self.session.get(MemoryFact, memory_id)
+        if fact is None or fact.user_id != principal.user_id:
+            return f"No memory found for id {memory_id}."
+        fact.valid_until = datetime.now(tz=UTC)
+        return f"Forgot memory {memory_id}."
+
+    async def _memory_export(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        import json
+
+        data = await self._memory_kernel().export_memory(principal.user_id)
+        valid = await self._memory_kernel().audit_integrity(principal.user_id)
+        return (
+            f"Local memory export (local-only, audit chain valid={valid}):\n"
+            f"{json.dumps(data, indent=2)[:4000]}"
+        )
+
+    async def _memory_find_files(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        topic = args.get("topic", "").strip()
+        if not topic:
+            return "Usage: find my <topic> files"
+        kernel_result = await self._memory_search(principal, {"query": topic}, **_kw)
+        if "No local memory matches" not in kernel_result:
+            return kernel_result
+        return await self._search_computer_prompt(
+            principal, {"pattern": topic.replace(" files", "").strip()}, **_kw
+        )
+
+    async def _project_history(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        if active is None:
+            return "No active project. Use set project <path> first."
+        return await self._memory_kernel().format_project_history(
+            principal.user_id, active.project_root
+        )
+
+    async def _project_yesterday(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        root = active.project_root if active else None
+        return await format_yesterday_summary(self.session, principal.user_id, root)
+
+    async def _project_last_failure(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        root = active.project_root if active else None
+        return await format_last_failure(self.session, principal.user_id, root)
+
+    async def _project_open_loops(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        root = active.project_root if active else None
+        return await format_open_loops(self.session, principal.user_id, root)
+
+    async def _project_remember_decision(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        text = args.get("text", "").strip()
+        if not text:
+            return "Usage: remember this project decision: <text>"
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        if active is None:
+            return "No active project."
+        await remember_project_decision(
+            self.session,
+            principal.user_id,
+            project_root=active.project_root,
+            text=text,
+        )
+        return f"Recorded project decision: {text}"
 
     def _parse_memory_fact(self, statement: str) -> dict[str, str]:
         text = re.sub(r"\s+", " ", statement.strip()).rstrip(".")

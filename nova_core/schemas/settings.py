@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     nova_codex_cli_enabled: bool = Field(default=False, alias="NOVA_CODEX_CLI_ENABLED")
     nova_anthropic_enabled: bool = Field(default=False, alias="NOVA_ANTHROPIC_ENABLED")
     nova_openai_enabled: bool = Field(default=False, alias="NOVA_OPENAI_ENABLED")
+    nova_memory_embedding_model: str = Field(
+        default="nomic-embed-text", alias="NOVA_MEMORY_EMBEDDING_MODEL"
+    )
+    nova_memory_embedding_dimensions: int = Field(
+        default=256, alias="NOVA_MEMORY_EMBEDDING_DIMENSIONS"
+    )
+    nova_memory_index_batch_size: int = Field(default=50, alias="NOVA_MEMORY_INDEX_BATCH_SIZE")
 
     @property
     def config_path(self) -> Path:

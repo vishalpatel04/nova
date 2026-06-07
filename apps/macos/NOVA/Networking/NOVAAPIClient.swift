@@ -376,6 +376,60 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacProviderTrust.self, from: data)
     }
 
+    func fetchMemoryOverview() async throws -> MacMemoryOverview {
+        let data = try await request(path: "/api/v1/memory/overview")
+        return try decoder.decode(MacMemoryOverview.self, from: data)
+    }
+
+    func setMemoryProfile(_ profile: String) async throws -> MacMemoryOverview {
+        struct Body: Encodable { let profile: String }
+        let data = try await request(path: "/api/v1/memory/profile", method: "POST", body: Body(profile: profile))
+        return try decoder.decode(MacMemoryOverview.self, from: data)
+    }
+
+    func scanMemorySources() async throws -> [String: Int] {
+        let data = try await request(path: "/api/v1/memory/scan", method: "POST")
+        return try decoder.decode([String: Int].self, from: data)
+    }
+
+    func pauseMemoryIndexing() async throws {
+        _ = try await request(path: "/api/v1/memory/pause", method: "POST")
+    }
+
+    func resumeMemoryIndexing() async throws {
+        _ = try await request(path: "/api/v1/memory/resume", method: "POST")
+    }
+
+    func fetchMemoryFacts() async throws -> [MacMemoryFact] {
+        let data = try await request(path: "/api/v1/memory/facts")
+        return try decoder.decode([MacMemoryFact].self, from: data)
+    }
+
+    func fetchMemoryRelationships() async throws -> [MacMemoryRelationship] {
+        let data = try await request(path: "/api/v1/memory/relationships")
+        return try decoder.decode([MacMemoryRelationship].self, from: data)
+    }
+
+    func searchMemory(query: String) async throws -> MacMemorySearchResult {
+        struct Body: Encodable { let query: String; let limit: Int }
+        let data = try await request(
+            path: "/api/v1/memory/search",
+            method: "POST",
+            body: Body(query: query, limit: 10)
+        )
+        return try decoder.decode(MacMemorySearchResult.self, from: data)
+    }
+
+    func exportMemory() async throws -> Data {
+        try await request(path: "/api/v1/memory/export")
+    }
+
+    func verifyMemoryAuditIntegrity() async throws -> Bool {
+        struct Response: Decodable { let valid: Bool }
+        let data = try await request(path: "/api/v1/memory/audit-integrity")
+        return try decoder.decode(Response.self, from: data).valid
+    }
+
     func fetchChatSessions() async throws -> [MacChatSession] {
         let data = try await request(path: "/api/v1/chat/sessions")
         return try decoder.decode([MacChatSession].self, from: data)

@@ -770,3 +770,238 @@ class ProjectDecision(Base):
     source_plan_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryUserSettings(Base):
+    __tablename__ = "memory_user_settings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    access_profile: Mapped[str] = mapped_column(String(32), nullable=False, default="minimal")
+    override_performance_exclusions: Mapped[bool] = mapped_column(Boolean, default=False)
+    indexing_paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    custom_include_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    custom_exclude_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", name="uq_memory_user_settings_user_id"),)
+
+
+class MemorySource(Base):
+    __tablename__ = "memory_sources"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    root_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    canonical_root_path: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_origin: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_indexing_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    metadata_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    watcher_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryDocument(Base):
+    __tablename__ = "memory_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_sources.id"), nullable=False, index=True
+    )
+    canonical_path: Mapped[str] = mapped_column(String(2048), nullable=False, index=True)
+    relative_path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    extension: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    indexing_state: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    sensitivity: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MemoryIndexJob(Base):
+    __tablename__ = "memory_index_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memory_documents.id"), nullable=True, index=True
+    )
+    source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memory_sources.id"), nullable=True, index=True
+    )
+    job_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryEvent(Base):
+    __tablename__ = "memory_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    project_root: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    sensitivity: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryFact(Base):
+    __tablename__ = "memory_facts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    project_root: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    predicate: Mapped[str] = mapped_column(String(128), nullable=False)
+    object_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    source_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    user_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    sensitivity: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryEntity(Base):
+    __tablename__ = "memory_entities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    canonical_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    aliases_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryRelationship(Base):
+    __tablename__ = "memory_relationships"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    source_entity_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_entities.id"), nullable=False, index=True
+    )
+    relation_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target_entity_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_entities.id"), nullable=False, index=True
+    )
+    confidence: Mapped[float] = mapped_column(Float, default=0.7)
+    source_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    project_root: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryChunk(Base):
+    __tablename__ = "memory_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memory_documents.id"), nullable=True, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    project_root: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
+    text_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    keyword_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_json: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    sensitivity: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryProjectSummary(Base):
+    __tablename__ = "memory_project_summaries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    project_root: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    summary_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    source_event_ids_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryRetrievalLog(Base):
+    __tablename__ = "memory_retrieval_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    query_summary: Mapped[str] = mapped_column(String(512), nullable=False)
+    selected_memory_ids_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    scores_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryPermission(Base):
+    __tablename__ = "memory_permissions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    memory_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    auto_store_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MemoryAuditChain(Base):
+    __tablename__ = "memory_audit_chain"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    sanitized_payload_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    previous_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    current_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
