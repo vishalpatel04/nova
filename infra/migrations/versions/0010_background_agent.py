@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0010_milestone_2_background_agent"
+revision: str = "0010_background_agent"
 down_revision: str | None = "0009_milestone_1_useful_agent"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

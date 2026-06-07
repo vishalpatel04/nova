@@ -139,4 +139,4 @@ export NOVA_DEMO_TOKEN=<paired-client-token>   # optional
 
 ## Migration
 
-`0010_milestone_2_background_agent` — creates `background_tasks`, `background_task_runs`, `notification_items`.
+`0010_background_agent` — creates `background_tasks`, `background_task_runs`, `notification_items`.
