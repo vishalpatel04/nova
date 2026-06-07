@@ -71,6 +71,18 @@ def _detect_commands(root: Path) -> dict[str, str]:
     return cmds
 
 
+def normalize_git_branch(project_root: Path, stdout: str) -> str | None:
+    """Return branch name, None if not a git repo, or 'uninitialized' if no commits."""
+    text = stdout.strip()
+    if text.lower().startswith("fatal:") or "not a git repository" in text.lower():
+        return None
+    if not (project_root / ".git").exists():
+        return None
+    if not text:
+        return "uninitialized"
+    return text
+
+
 async def _run_git(project_root: Path, subcommand: str) -> str:
     command = f"git {subcommand}"
     validation = validate_safe_shell_command(
@@ -82,7 +94,7 @@ async def _run_git(project_root: Path, subcommand: str) -> str:
     result = await execute_safe_command(validation, cwd=project_root)
     if result.timed_out or result.blocked:
         return ""
-    return (result.stdout_excerpt or result.stderr_excerpt or "").strip()
+    return (result.stdout_excerpt or "").strip()
 
 
 async def inspect_repo(project_root: Path) -> RepoInspection:
@@ -94,17 +106,18 @@ async def inspect_repo(project_root: Path) -> RepoInspection:
     if readme_path.is_file() and readme_path.stat().st_size < 32_000:
         readme = readme_path.read_text(encoding="utf-8", errors="replace")[:1500]
 
-    git_status, branch, log = await asyncio.gather(
+    git_status, branch_out, log = await asyncio.gather(
         _run_git(root, "status"),
         _run_git(root, "branch --show-current"),
         _run_git(root, "log --oneline -n 10"),
     )
+    branch = normalize_git_branch(root, branch_out)
 
     return RepoInspection(
         project_root=str(root),
         project_name=name,
         git_status=git_status or "(no git or empty)",
-        current_branch=branch or "(unknown)",
+        current_branch=branch or "",
         recent_commits=log or "(no commits)",
         file_tree=_bounded_tree(root),
         readme_excerpt=readme,
@@ -119,7 +132,7 @@ def format_inspection(inspection: RepoInspection) -> str:
     return (
         f"Project: {inspection.project_name}\n"
         f"Root: {inspection.project_root}\n"
-        f"Branch: {inspection.current_branch}\n\n"
+        f"Branch: {inspection.current_branch or '(no git)'}\n\n"
         f"Git status:\n{inspection.git_status}\n\n"
         f"Recent commits:\n{inspection.recent_commits}\n\n"
         f"File tree:\n{inspection.file_tree}\n\n"

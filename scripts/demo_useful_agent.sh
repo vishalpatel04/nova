@@ -209,12 +209,22 @@ mkdir -p "$DEMO_DIR/tests"
 cat >"$DEMO_DIR/Makefile" <<'EOF'
 .PHONY: test
 test:
-	python3 -m pytest -q tests
+	python3 -m unittest discover -s tests -p 'test_*.py' -v
 EOF
-cat >"$DEMO_DIR/tests/demo_fail.py" <<'EOF'
-def test_demo():
-    assert False
+cat >"$DEMO_DIR/tests/test_demo.py" <<'EOF'
+import unittest
+
+
+class DemoTest(unittest.TestCase):
+    def test_demo(self):
+        assert False
 EOF
+(
+  cd "$DEMO_DIR"
+  git init -q
+  git -c user.email=demo@nova.local -c user.name="NOVA Demo" add Makefile tests/test_demo.py
+  git -c user.email=demo@nova.local -c user.name="NOVA Demo" commit -q -m "demo fixture"
+)
 
 PROJECT_PATH="$DEMO_DIR"
 

@@ -20,6 +20,8 @@ def test_demo_script_does_not_use_symlink_or_tmp_project_root() -> None:
     assert "NOVA-Safe-Test" in text
     assert "sanitize_api_error" in text
     assert "NOVA_DEMO_DEBUG" in text
+    assert "pytest" not in text
+    assert "unittest discover" in text
 
 
 def test_demo_script_cleanup_only_removes_safe_root_demo_dir() -> None:

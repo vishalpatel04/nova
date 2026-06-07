@@ -48,10 +48,11 @@ class ProjectService:
 
         root = validation.resolved
         tooling = _detect_tooling(root)
-        branch = ""
+        branch: str | None = None
         try:
             inspection = await inspect_repo(root)
-            branch = inspection.current_branch
+            raw_branch = inspection.current_branch or None
+            branch = None if raw_branch == "" else raw_branch
         except Exception:
             pass
 

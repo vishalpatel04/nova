@@ -240,13 +240,15 @@ class CodingTaskService:
         if path_match:
             rel = path_match.group(1).replace("\\", "/")
         else:
-            demo = project_root / "tests" / "demo_fail.py"
-            if demo.exists() and "demo_fail" in analysis or demo.exists() and not analysis.strip():
-                rel = "tests/demo_fail.py"
+            demo = project_root / "tests" / "test_demo.py"
+            if demo.exists() and ("test_demo" in analysis or not analysis.strip()):
+                rel = "tests/test_demo.py"
         if rel is None:
-            demo = project_root / "tests" / "demo_fail.py"
-            if demo.exists():
-                rel = "tests/demo_fail.py"
+            for candidate in ("tests/test_demo.py", "tests/demo_fail.py"):
+                demo = project_root / candidate
+                if demo.exists():
+                    rel = candidate
+                    break
             else:
                 return None
         target = project_root / rel
