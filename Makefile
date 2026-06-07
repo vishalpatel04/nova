@@ -1,4 +1,13 @@
 .PHONY: bootstrap doctor dev test lint typecheck migrate start stop worker backup install
+.PHONY: db-target
+
+export DATABASE_URL
+
+ifneq ($(origin DATABASE_URL), command line)
+DATABASE_URL_OVERRIDE_ENV :=
+else
+DATABASE_URL_OVERRIDE_ENV := NOVA_ALLOW_DATABASE_URL_OVERRIDE=1
+endif
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -34,7 +43,10 @@ typecheck:
 	$(MYPY) nova_core apps/api apps/worker
 
 migrate:
-	$(ALEMBIC) upgrade head
+	$(DATABASE_URL_OVERRIDE_ENV) $(ALEMBIC) upgrade head
+
+db-target:
+	$(DATABASE_URL_OVERRIDE_ENV) $(PY) -m infra.migrations.database_url
 
 start:
 	docker compose -f infra/docker-compose.yml up -d
