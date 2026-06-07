@@ -19,6 +19,7 @@ class CapabilityName(StrEnum):
     CODE_PATCH = "code.patch"
     GIT_COMMIT = "git.commit"
     GIT_PUSH = "git.push"
+    GIT_BRANCH_CREATE = "git.branch.create"
 
 
 class RiskLevel(StrEnum):
@@ -47,6 +48,7 @@ APPROVAL_REQUIRED_CAPABILITIES: frozenset[CapabilityName] = frozenset(
         CapabilityName.CODE_PATCH,
         CapabilityName.CLOUD_SEND_FILE,
         CapabilityName.GIT_COMMIT,
+        CapabilityName.GIT_BRANCH_CREATE,
     }
 )
 
@@ -68,6 +70,7 @@ _RISK_BY_CAPABILITY: dict[CapabilityName, RiskLevel] = {
     CapabilityName.BROWSER_CONTROL: RiskLevel.CRITICAL,
     CapabilityName.CODE_PATCH: RiskLevel.HIGH,
     CapabilityName.GIT_COMMIT: RiskLevel.MEDIUM,
+    CapabilityName.GIT_BRANCH_CREATE: RiskLevel.MEDIUM,
     CapabilityName.GIT_PUSH: RiskLevel.CRITICAL,
 }
 

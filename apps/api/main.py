@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from apps.api.deps import AppState, set_app_state
 from apps.api.routes import (
+    agent_plans_router,
     approvals_router,
     background_tasks_router,
     chat_router,
@@ -160,6 +161,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(background_tasks_router, prefix="/api/v1")
+    app.include_router(agent_plans_router, prefix="/api/v1")
     app.include_router(pairing_router, prefix="/api/v1")
     app.include_router(runtime_router, prefix="/api/v1")
     app.include_router(scheduler_router, prefix="/api/v1")

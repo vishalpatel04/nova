@@ -249,3 +249,30 @@ class ApprovalRequestService:
             details={"capability": record.capability},
         )
         return record
+
+    async def consume_for_execution(
+        self,
+        principal: Principal,
+        approval_id: str,
+        capability: CapabilityName,
+    ) -> ApprovalRequest:
+        """Load approved request, verify capability + fingerprint, then consume."""
+        locked = await self.session.execute(
+            select(ApprovalRequest).where(ApprovalRequest.id == approval_id).with_for_update()
+        )
+        record = locked.scalar_one_or_none()
+        if record is None:
+            raise NotFoundError("approval_request", approval_id)
+        if record.user_id != principal.user_id or record.device_id != principal.device_id:
+            raise UnauthorizedError("Approval request ownership mismatch")
+        if record.capability != capability.value:
+            raise ValidationError(f"Approval is not for {capability.value}")
+        if record.status == ActionApprovalStatus.CONSUMED.value:
+            raise ConflictError("Approval already consumed")
+        if record.status != ActionApprovalStatus.APPROVED.value:
+            raise ConflictError(f"Approval status {record.status} cannot execute")
+        if _as_utc(record.expires_at) < _utc_now():
+            raise ConflictError("Approval expired")
+        payload = (record.metadata_json or {}).get("payload") or {}
+        fingerprint = compute_action_fingerprint(record.capability, payload)
+        return await self.consume(principal, approval_id, expected_fingerprint=fingerprint)

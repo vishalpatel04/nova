@@ -322,6 +322,60 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacRuntimeStatus.self, from: data)
     }
 
+    func fetchActiveAgentPlan() async throws -> MacAgentPlanDetail? {
+        struct Wrapper: Decodable { let plan: MacAgentPlanDetail? }
+        let data = try await request(path: "/api/v1/agent-plans/active")
+        return try decoder.decode(Wrapper.self, from: data).plan
+    }
+
+    func createAgentPlan(objective: String, title: String? = nil) async throws -> MacAgentPlanDetail {
+        struct Body: Encodable {
+            let objective: String
+            let title: String?
+        }
+        struct Direct: Decodable {
+            let planId: String
+            let status: String
+            let objective: String
+            let providerLane: String
+            let currentStepIndex: Int
+            let steps: [MacAgentPlanStep]
+            let waitingApproval: Bool?
+            let approvalId: String?
+            let patchPreview: String?
+            let reviewerVerdict: String?
+            let commitProposal: MacCommitProposal?
+        }
+        let data = try await request(
+            path: "/api/v1/agent-plans",
+            method: "POST",
+            body: Body(objective: objective, title: title)
+        )
+        let direct = try decoder.decode(Direct.self, from: data)
+        return MacAgentPlanDetail(
+            planId: direct.planId,
+            status: direct.status,
+            objective: direct.objective,
+            providerLane: direct.providerLane,
+            currentStepIndex: direct.currentStepIndex,
+            steps: direct.steps,
+            waitingApproval: direct.waitingApproval,
+            approvalId: direct.approvalId,
+            patchPreview: direct.patchPreview,
+            reviewerVerdict: direct.reviewerVerdict,
+            commitProposal: direct.commitProposal
+        )
+    }
+
+    func cancelAgentPlan(planId: String) async throws {
+        _ = try await request(path: "/api/v1/agent-plans/\(planId)/cancel", method: "POST")
+    }
+
+    func fetchProviderTrust() async throws -> MacProviderTrust {
+        let data = try await request(path: "/api/v1/provider-trust")
+        return try decoder.decode(MacProviderTrust.self, from: data)
+    }
+
     func fetchChatSessions() async throws -> [MacChatSession] {
         let data = try await request(path: "/api/v1/chat/sessions")
         return try decoder.decode([MacChatSession].self, from: data)
@@ -606,6 +660,57 @@ struct MacPatchExecutionResult: Decodable {
     let errorMessage: String?
     let startedAt: Date?
     let finishedAt: Date?
+}
+
+struct MacAgentPlanStep: Decodable, Identifiable {
+    var id: Int { stepIndex }
+    let stepIndex: Int
+    let agentRole: String
+    let actionType: String
+    let status: String
+    let inputSummary: String?
+    let outputSummary: String?
+    let retryCount: Int?
+}
+
+struct MacCommitProposal: Decodable {
+    let branchName: String
+    let commitMessage: String
+    let stagedPaths: [String]
+    let pushDisabled: Bool?
+}
+
+struct MacAgentPlanDetail: Decodable {
+    let planId: String
+    let status: String
+    let objective: String
+    let providerLane: String
+    let currentStepIndex: Int
+    let steps: [MacAgentPlanStep]
+    let waitingApproval: Bool?
+    let approvalId: String?
+    let patchPreview: String?
+    let reviewerVerdict: String?
+    let commitProposal: MacCommitProposal?
+
+    enum CodingKeys: String, CodingKey {
+        case planId = "plan_id"
+        case status, objective, providerLane, currentStepIndex, steps
+        case waitingApproval, approvalId, patchPreview, reviewerVerdict, commitProposal
+    }
+}
+
+struct MacProviderTrustEntry: Decodable {
+    let kind: String
+    let configured: Bool
+    let enabled: Bool
+}
+
+struct MacProviderTrust: Decodable {
+    let activeLane: String
+    let localActive: Bool
+    let externalProvidersEnabled: Bool
+    let providers: [MacProviderTrustEntry]
 }
 
 enum StringValue: Decodable {

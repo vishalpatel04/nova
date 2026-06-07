@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     nova_n8n_base_url: str = Field(default="", alias="NOVA_N8N_BASE_URL")
     nova_openclaw_base_url: str = Field(default="", alias="NOVA_OPENCLAW_BASE_URL")
     nova_shortcuts_enabled: bool = Field(default=False, alias="NOVA_SHORTCUTS_ENABLED")
+    nova_external_providers_enabled: bool = Field(
+        default=False, alias="NOVA_EXTERNAL_PROVIDERS_ENABLED"
+    )
+    nova_codex_cli_enabled: bool = Field(default=False, alias="NOVA_CODEX_CLI_ENABLED")
+    nova_anthropic_enabled: bool = Field(default=False, alias="NOVA_ANTHROPIC_ENABLED")
+    nova_openai_enabled: bool = Field(default=False, alias="NOVA_OPENAI_ENABLED")
 
     @property
     def config_path(self) -> Path:

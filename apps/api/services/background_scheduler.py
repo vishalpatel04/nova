@@ -250,6 +250,7 @@ class BackgroundSchedulerService:
                     task_id=task.id,
                     metadata={"patch_requires_approval": True},
                 )
+                await self._maybe_create_draft_repair_plan(task, safe_summary)
             else:
                 await self._notifications.create_notification(
                     user_id=task.user_id,
@@ -402,3 +403,34 @@ class BackgroundSchedulerService:
         if count:
             await self.session.flush()
         return count
+
+    async def _maybe_create_draft_repair_plan(
+        self, task: BackgroundTask, failure_summary: str
+    ) -> None:
+        """Create draft orchestration plan on validation failure — never auto-run."""
+        if not task.project_root:
+            return
+        meta = dict(task.metadata_json or {})
+        if meta.get("draft_plan_id"):
+            return
+        from apps.api.services.agent_plans import AgentPlanService
+
+        plan_svc = AgentPlanService(self.session, self.settings)
+        plan = await plan_svc.create_draft_from_validation_failure(
+            user_id=task.user_id,
+            device_id=task.device_id,
+            project_root=task.project_root,
+            objective=f"Fix validation failure: {failure_summary[:200]}",
+            source_task_id=task.id,
+        )
+        meta["draft_plan_id"] = plan.id
+        task.metadata_json = meta
+        await self._notifications.create_notification(
+            user_id=task.user_id,
+            device_id=task.device_id,
+            notification_type=NotificationType.DRAFT_PLAN_READY.value,
+            title="Validation failed. Draft repair plan ready.",
+            summary=f"Draft plan {plan.id} — review and run manually.",
+            task_id=task.id,
+            metadata={"plan_id": plan.id, "draft": True},
+        )
