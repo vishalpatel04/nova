@@ -17,6 +17,7 @@ from apps.api.routes import (
     core_router,
     devices_router,
     executions_router,
+    memory_router,
     pairing_router,
     projects_router,
     runtime_router,
@@ -65,10 +66,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _validate_startup(settings)
 
     scheduler_task: asyncio.Task[None] | None = None
+    memory_task: asyncio.Task[None] | None = None
     if settings.nova_env != "test":
         scheduler_task = asyncio.create_task(_background_scheduler_loop(settings))
+        memory_task = asyncio.create_task(_background_memory_compiler_loop(settings))
 
     yield
+
+    if memory_task is not None:
+        memory_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await memory_task
 
     if scheduler_task is not None:
         scheduler_task.cancel()
@@ -100,6 +108,26 @@ async def _background_scheduler_loop(settings: Settings) -> None:
             raise
         except Exception as exc:
             logger.warning("background_scheduler_tick_failed", error=str(exc))
+        await asyncio.sleep(poll_seconds)
+
+
+async def _background_memory_compiler_loop(settings: Settings) -> None:
+    from apps.api.services.memory_compiler_loop import memory_compiler_tick
+    from nova_core.models.database import get_session
+
+    poll_seconds = 45
+    logger.info("memory_compiler_started", poll_seconds=poll_seconds)
+    while True:
+        try:
+            async for session in get_session():
+                await memory_compiler_tick(session, settings)
+                await session.commit()
+                break
+        except asyncio.CancelledError:
+            logger.info("memory_compiler_stopped")
+            raise
+        except Exception as exc:
+            logger.warning("memory_compiler_tick_failed", error=str(exc))
         await asyncio.sleep(poll_seconds)
 
 
@@ -160,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(executions_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
+    app.include_router(memory_router, prefix="/api/v1")
     app.include_router(background_tasks_router, prefix="/api/v1")
     app.include_router(agent_plans_router, prefix="/api/v1")
     app.include_router(pairing_router, prefix="/api/v1")

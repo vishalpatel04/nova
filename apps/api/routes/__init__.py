@@ -6,6 +6,7 @@ from apps.api.routes.background_tasks import router as background_tasks_router
 from apps.api.routes.chat import router as chat_router
 from apps.api.routes.core import router as core_router
 from apps.api.routes.executions import router as executions_router
+from apps.api.routes.memory import router as memory_router
 from apps.api.routes.pairing import devices_router
 from apps.api.routes.pairing import router as pairing_router
 from apps.api.routes.projects import router as projects_router
@@ -24,6 +25,7 @@ __all__ = [
     "pairing_router",
     "runtime_router",
     "scheduler_router",
+    "memory_router",
     "projects_router",
     "devices_router",
     "timeline_router",

@@ -157,6 +157,8 @@ struct MacSettingsView: View {
                 .tabItem { Label("Notifications", systemImage: "bell") }
             NavigationStack { ApprovalQueueView() }
                 .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
+            NavigationStack { MemoryCenterView() }
+                .tabItem { Label("Memory", systemImage: "brain.head.profile") }
             MacAgentsView().tabItem { Label("Agents", systemImage: "person.3") }
             MacMissionRoomView().tabItem { Label("Missions", systemImage: "list.bullet") }
         }

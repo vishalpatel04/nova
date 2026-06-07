@@ -496,3 +496,90 @@ class BackgroundSchedulerStatusResponse(BaseModel):
     failed_tasks: int
     due_tasks: int
     unread_notifications: int = 0
+
+
+class MemoryAccessProfileRequest(BaseModel):
+    profile: str
+
+
+class MemoryFolderRequest(BaseModel):
+    path: str
+
+
+class MemorySearchRequest(BaseModel):
+    query: str
+    limit: int = 10
+
+
+class MemoryRememberRequest(BaseModel):
+    subject: str
+    predicate: str = "related_to"
+    object_summary: str
+    project_root: str | None = None
+
+
+class MemoryForgetTopicRequest(BaseModel):
+    topic: str
+
+
+class MemoryOverviewResponse(BaseModel):
+    access_profile: str
+    indexing_paused: bool
+    local_only: bool
+    documents_discovered: int
+    documents_indexed: int
+    chunks: int
+    entities: int
+    relationships: int
+    pending_jobs: int
+    embedding_health: str
+    embedding_available: bool
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    vault_path: str
+    vault_invisible: bool = True
+
+
+class MemoryFactResponse(BaseModel):
+    id: str
+    subject: str
+    predicate: str
+    object_summary: str
+    confidence: float
+    user_confirmed: bool
+    project_root: str | None = None
+
+
+class MemoryRelationshipResponse(BaseModel):
+    id: str
+    relation_type: str
+    confidence: float
+    source_entity_id: str
+    target_entity_id: str
+    user_confirmed: bool
+
+
+class MemorySearchHitResponse(BaseModel):
+    kind: str
+    memory_id: str
+    summary: str
+    score: float
+    provenance: str
+
+
+class MemorySearchResponse(BaseModel):
+    query: str
+    hits: list[MemorySearchHitResponse] = Field(default_factory=list)
+    semantic_available: bool
+    searched_sources: list[str] = Field(default_factory=list)
+
+
+class MemoryExportResponse(BaseModel):
+    exported_at: str
+    local_only: bool
+    facts: list[dict[str, Any]] = Field(default_factory=list)
+    entities: list[dict[str, Any]] = Field(default_factory=list)
+    relationships: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class MemoryAuditIntegrityResponse(BaseModel):
+    valid: bool

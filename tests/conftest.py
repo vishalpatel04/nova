@@ -22,6 +22,7 @@ def test_settings() -> Settings:
     get_settings.cache_clear()
     os.environ["NOVA_ENV"] = "test"
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+    os.environ["NOVA_ALLOW_DATABASE_URL_OVERRIDE"] = "1"
     os.environ["NOVA_REQUIRE_DEVICE_TOKEN"] = "false"
     os.environ["NOVA_BOOTSTRAP_ADMIN_ENABLED"] = "true"
     os.environ["NOVA_BOOTSTRAP_ADMIN_TOKEN"] = "nova_bts_test_admin"

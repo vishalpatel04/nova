@@ -1,16 +1,42 @@
 """Typed application settings loaded from environment and config files."""
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine.url import make_url
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_DOTENV = REPO_ROOT / ".env"
+DEFAULT_LOCAL_DATABASE_URL = "postgresql+asyncpg://nova:nova@localhost:5433/nova"
+
+
+def _load_repo_database_url() -> str:
+    if not REPO_DOTENV.exists():
+        return DEFAULT_LOCAL_DATABASE_URL
+    for line in REPO_DOTENV.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("export "):
+            continue
+        if not stripped.startswith("DATABASE_URL="):
+            continue
+        return stripped.split("=", 1)[1].strip().strip("'\"")
+    return DEFAULT_LOCAL_DATABASE_URL
+
+
+def _is_shell_localhost_database_url(url: str) -> bool:
+    parsed = make_url(url)
+    host = parsed.host or ""
+    port = parsed.port or 5432
+    return host in {"localhost", "127.0.0.1"} and port == 5432
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(REPO_DOTENV),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -20,7 +46,7 @@ class Settings(BaseSettings):
     nova_api_host: str = Field(default="0.0.0.0", alias="NOVA_API_HOST")
     nova_api_port: int = Field(default=8000, alias="NOVA_API_PORT")
     database_url: str = Field(
-        default="postgresql+asyncpg://nova:nova@localhost:5432/nova",
+        default=DEFAULT_LOCAL_DATABASE_URL,
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
@@ -58,6 +84,24 @@ class Settings(BaseSettings):
     nova_codex_cli_enabled: bool = Field(default=False, alias="NOVA_CODEX_CLI_ENABLED")
     nova_anthropic_enabled: bool = Field(default=False, alias="NOVA_ANTHROPIC_ENABLED")
     nova_openai_enabled: bool = Field(default=False, alias="NOVA_OPENAI_ENABLED")
+    nova_memory_embedding_model: str = Field(
+        default="nomic-embed-text", alias="NOVA_MEMORY_EMBEDDING_MODEL"
+    )
+    nova_memory_embedding_dimensions: int = Field(
+        default=256, alias="NOVA_MEMORY_EMBEDDING_DIMENSIONS"
+    )
+    nova_memory_index_batch_size: int = Field(default=50, alias="NOVA_MEMORY_INDEX_BATCH_SIZE")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _resolve_database_url(cls, value: object) -> str:
+        if os.environ.get("NOVA_ALLOW_DATABASE_URL_OVERRIDE") == "1":
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            return DEFAULT_LOCAL_DATABASE_URL
+        if isinstance(value, str) and value.strip() and not _is_shell_localhost_database_url(value):
+            return value.strip()
+        return _load_repo_database_url()
 
     @property
     def config_path(self) -> Path:
@@ -76,7 +120,7 @@ class Settings(BaseSettings):
 
 class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(REPO_DOTENV),
         env_file_encoding="utf-8",
         extra="ignore",
     )

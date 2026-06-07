@@ -7,6 +7,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from infra.migrations.database_url import configure_alembic_database_url
 from nova_core.models.database import Base
 from nova_core.models.orm import (  # noqa: F401 — register models
     Agent,
@@ -35,6 +36,8 @@ from nova_core.models.orm import (  # noqa: F401 — register models
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+configure_alembic_database_url(config)
 
 target_metadata = Base.metadata
 
