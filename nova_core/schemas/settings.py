@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     nova_api_host: str = Field(default="0.0.0.0", alias="NOVA_API_HOST")
     nova_api_port: int = Field(default=8000, alias="NOVA_API_PORT")
     database_url: str = Field(
-        default="postgresql+asyncpg://nova:nova@localhost:5432/nova",
+        default="postgresql+asyncpg://nova:nova@localhost:5433/nova",
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
