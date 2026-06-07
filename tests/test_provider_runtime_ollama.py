@@ -75,4 +75,4 @@ async def test_infer_degraded_when_no_models(monkeypatch: pytest.MonkeyPatch) ->
 
     result = await runtime.infer(InferenceRequest(prompt="hello"))
     assert result.mode == "degraded_rule_based"
-    assert "system status" in result.content
+    assert result.content == runtime._default_help()

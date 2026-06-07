@@ -14,6 +14,7 @@ from nova_core.providers.router import ProviderName
 from nova_core.providers.stream_context import StreamCancelToken, StreamTelemetry
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.logging import get_logger
+from nova_core.tools.provider_security import scrub_runtime_detail
 
 logger = get_logger("nova.providers.runtime")
 
@@ -57,6 +58,7 @@ class InferenceResult:
     input_tokens: int
     output_tokens: int
     fallback_used: bool = False
+    fallback_reason: str | None = None
     error: str | None = None
 
 
@@ -94,6 +96,7 @@ class ProviderRuntime:
 
     async def infer(self, request: InferenceRequest) -> InferenceResult:
         last_error: str | None = None
+        last_reason: str | None = None
         for index, provider in enumerate(self.configured_chain()):
             if not self._configured(provider):
                 logger.info(
@@ -129,30 +132,33 @@ class ProviderRuntime:
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens,
                     fallback_used=index > 0,
+                    fallback_reason=result.fallback_reason,
                     error=result.error,
                 )
             except Exception as exc:
                 last_error = str(exc)
+                last_reason = self._classify_fallback_reason(exc)
                 logger.warning(
                     "provider_infer_failed",
                     provider=provider.value,
-                    error=last_error,
+                    reason=last_reason or "provider_unreachable",
                 )
                 continue
         logger.warning(
             "provider_infer_degraded",
             reason="chain_exhausted",
-            last_error=last_error,
+            last_reason=last_reason,
         )
-        return self._local_degraded_response(request, last_error)
+        return self._local_degraded_response(request, last_error, last_reason)
 
     async def stream(
         self,
         request: InferenceRequest,
         *,
         cancel: StreamCancelToken | None = None,
+        telemetry: StreamTelemetry | None = None,
     ) -> AsyncIterator[str]:
-        telemetry = StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
+        telemetry = telemetry or StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
         for index, provider in enumerate(self.configured_chain()):
             if cancel and cancel.cancelled:
                 telemetry.cancelled = True
@@ -180,6 +186,7 @@ class ProviderRuntime:
                         yield chunk
                     if telemetry.token_count > 0:
                         telemetry.fallback_used = index > 0
+                        telemetry.mode = "local_ollama"
                         logger.info(
                             "provider_stream_success",
                             provider=provider.value,
@@ -197,13 +204,20 @@ class ProviderRuntime:
                         yield chunk
                     if telemetry.token_count > 0:
                         telemetry.fallback_used = index > 0
+                        telemetry.mode = (
+                            "paid"
+                            if provider in {ProviderName.OPENAI, ProviderName.ANTHROPIC}
+                            else "local_ollama"
+                        )
                         return
             except Exception as exc:
                 logger.warning(
                     "provider_stream_failed",
                     provider=provider.value,
-                    error=str(exc),
+                    reason=self._classify_fallback_reason(exc) or "provider_unreachable",
                 )
+                telemetry.error = str(exc)
+                telemetry.fallback_reason = self._classify_fallback_reason(exc)
                 continue
 
         logger.warning("provider_stream_degraded", reason="chain_exhausted")
@@ -213,6 +227,7 @@ class ProviderRuntime:
         telemetry.model = result.model
         telemetry.mode = result.mode
         telemetry.fallback_used = result.fallback_used
+        telemetry.fallback_reason = result.fallback_reason
         telemetry.error = result.error
         words = result.content.split(" ")
         for index, word in enumerate(words):
@@ -225,6 +240,18 @@ class ProviderRuntime:
 
     def telemetry_from_stream(self, cancel: StreamCancelToken | None) -> StreamTelemetry:
         return StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
+
+    def runtime_summary(self) -> dict[str, Any]:
+        local_check = None
+        try:
+            local_check = self.settings.nova_ollama_base_url.strip()
+        except Exception:
+            local_check = None
+        return {
+            "local_available": bool(local_check),
+            "wake_word_supported": True,
+            "voice_on_device_supported": True,
+        }
 
     async def _stream_provider(
         self,
@@ -286,7 +313,7 @@ class ProviderRuntime:
                     provider=provider.value,
                     model=model,
                     status=resp.status_code,
-                    body=body,
+                    body=scrub_runtime_detail(body),
                 )
                 resp.raise_for_status()
             async for line in resp.aiter_lines():
@@ -490,7 +517,7 @@ class ProviderRuntime:
                     provider=provider.value,
                     model=model,
                     status=resp.status_code,
-                    body=body,
+                    body=scrub_runtime_detail(body),
                 )
                 resp.raise_for_status()
             data = resp.json()
@@ -575,7 +602,7 @@ class ProviderRuntime:
         )
 
     def _local_degraded_response(
-        self, request: InferenceRequest, last_error: str | None
+        self, request: InferenceRequest, last_error: str | None, fallback_reason: str | None
     ) -> InferenceResult:
         return InferenceResult(
             provider=ProviderName.LOCAL,
@@ -585,14 +612,35 @@ class ProviderRuntime:
             input_tokens=self._estimate_tokens(request.prompt),
             output_tokens=40,
             fallback_used=True,
+            fallback_reason=fallback_reason or "provider_unreachable",
             error=last_error,
         )
 
     def _default_help(self) -> str:
         return (
-            "I can help with system status, devices, sessions, safe read-only files, "
-            "repo analysis, approved automation requests, and local-first planning."
+            "I can help with status, devices, sessions, search, memory, approvals, "
+            "background tasks, and local planning."
         )
+
+    def _classify_fallback_reason(self, exc: Exception) -> str | None:
+        if isinstance(exc, httpx.TimeoutException):
+            return "timeout"
+        if isinstance(exc, httpx.ConnectError):
+            return "provider_unreachable"
+        if isinstance(exc, json.JSONDecodeError):
+            return "malformed_response"
+        message = str(exc).lower()
+        if "empty ollama response" in message:
+            return "empty_response"
+        if "no ollama models available" in message or "no matching ollama model" in message:
+            return "no_model"
+        if "invalid json" in message or "malformed" in message:
+            return "malformed_response"
+        if "timeout" in message:
+            return "timeout"
+        if "connection" in message:
+            return "provider_unreachable"
+        return None
 
     def _estimate_tokens(self, text: str) -> int:
         return max(1, len(text.split()))
@@ -606,5 +654,6 @@ def token_usage_dict(result: InferenceResult) -> dict[str, Any]:
         "output_tokens": result.output_tokens,
         "mode": result.mode,
         "fallback_used": result.fallback_used,
-        "error": result.error,
+        "fallback_reason": result.fallback_reason,
+        "error": result.fallback_reason,
     }

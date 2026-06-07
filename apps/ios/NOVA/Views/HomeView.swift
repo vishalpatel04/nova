@@ -24,7 +24,3 @@ struct HomeView: View {
         .navigationTitle("NOVA")
     }
 }
-
-#Preview {
-    NavigationStack { HomeView() }
-}

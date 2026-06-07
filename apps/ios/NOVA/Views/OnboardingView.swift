@@ -55,8 +55,3 @@ struct OnboardingView: View {
         .tag(page)
     }
 }
-
-#Preview {
-    OnboardingView()
-        .environmentObject(AppState())
-}

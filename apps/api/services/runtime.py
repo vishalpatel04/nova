@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nova_core.auth.principal import Principal
@@ -18,6 +19,7 @@ from nova_core.models.orm import (
     ChatSession,
     ModelUsage,
     ScheduledTask,
+    UserMemory,
 )
 from nova_core.providers.runtime import InferenceResult
 from nova_core.schemas.settings import Settings
@@ -85,6 +87,25 @@ class ChatSessionService:
         await self.session.flush()
         return record
 
+    async def get_recent_messages(
+        self,
+        principal: Principal,
+        session_id: str,
+        *,
+        limit: int = 16,
+    ) -> list[ChatMessageRecord]:
+        result = await self.session.execute(
+            select(ChatMessageRecord)
+            .join(ChatSession, ChatSession.id == ChatMessageRecord.session_id)
+            .where(
+                ChatSession.id == session_id,
+                ChatSession.user_id == principal.user_id,
+            )
+            .order_by(ChatMessageRecord.created_at.desc())
+            .limit(limit)
+        )
+        return list(reversed(result.scalars().all()))
+
     async def list_sessions(self, principal: Principal) -> list[ChatSession]:
         result = await self.session.execute(
             select(ChatSession)
@@ -111,6 +132,127 @@ class ChatSessionService:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+
+class UserMemoryService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list_memories(
+        self,
+        principal: Principal,
+        *,
+        limit: int = 12,
+    ) -> list[UserMemory]:
+        result = await self.session.execute(
+            select(UserMemory)
+            .where(UserMemory.user_id == principal.user_id)
+            .order_by(UserMemory.updated_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def remember(
+        self,
+        principal: Principal,
+        *,
+        key: str,
+        value_summary: str,
+        source: str = "user",
+        confidence: float = 0.9,
+        user_editable: bool = True,
+    ) -> UserMemory:
+        normalized_key = self._normalize_key(key)
+        normalized_value = self._normalize_value(value_summary)
+        self._validate_memory(normalized_key, normalized_value)
+        result = await self.session.execute(
+            select(UserMemory).where(
+                UserMemory.user_id == principal.user_id,
+                UserMemory.key == normalized_key,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            record = UserMemory(
+                user_id=principal.user_id,
+                key=normalized_key,
+                value_summary=normalized_value,
+                source=source,
+                confidence=confidence,
+                user_editable=user_editable,
+            )
+            self.session.add(record)
+        else:
+            record.value_summary = normalized_value
+            record.source = source
+            record.confidence = confidence
+            record.user_editable = user_editable
+        await self.session.flush()
+        await record_audit_event(
+            self.session,
+            actor_type=principal.principal_type,
+            actor_id=principal.principal_id,
+            action="user_memory.remembered",
+            resource_type="user_memory",
+            resource_id=record.id,
+            details={"key": normalized_key},
+        )
+        await self.session.commit()
+        return record
+
+    async def forget(self, principal: Principal, key: str) -> bool:
+        normalized_key = self._normalize_key(key)
+        result = await self.session.execute(
+            delete(UserMemory).where(
+                UserMemory.user_id == principal.user_id,
+                UserMemory.key == normalized_key,
+            )
+        )
+        deleted = bool(getattr(result, "rowcount", 0))
+        if deleted:
+            await record_audit_event(
+                self.session,
+                actor_type=principal.principal_type,
+                actor_id=principal.principal_id,
+                action="user_memory.forgotten",
+                resource_type="user_memory",
+                resource_id=normalized_key[:64],
+                details={"key": normalized_key},
+            )
+            await self.session.commit()
+        return deleted
+
+    def _normalize_key(self, key: str) -> str:
+        key = re.sub(r"\s+", " ", key.strip()).lower()
+        return key[:255]
+
+    def _normalize_value(self, value: str) -> str:
+        value = re.sub(r"\s+", " ", value.strip())
+        return value[:2000]
+
+    def _validate_memory(self, key: str, value: str) -> None:
+        sensitive_markers = (
+            "password",
+            "passwd",
+            "secret",
+            "token",
+            "api key",
+            "api_key",
+            "bearer ",
+            "sk-",
+            "ssh-rsa",
+            "private key",
+            "credential",
+        )
+        lowered = f"{key} {value}".lower()
+        if any(marker in lowered for marker in sensitive_markers):
+            from nova_core.schemas.errors import ValidationError
+
+            raise ValidationError("Refusing to store secrets or credential-like memory.")
+        if "=" in value and any(part for part in value.split() if part.count("=") >= 1):
+            from nova_core.schemas.errors import ValidationError
+
+            raise ValidationError("Refusing to store environment-like values.")
 
 
 class RuntimeTelemetryService:

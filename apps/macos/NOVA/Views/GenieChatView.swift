@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct GenieChatView: View {
     @EnvironmentObject private var appState: MacAppState
     @StateObject private var voice = VoiceRuntime()
     @FocusState private var inputFocused: Bool
+    @State private var expandedMessageIDs: Set<UUID> = []
 
     private let quickSuggestions = [
         "system status",
@@ -19,26 +21,70 @@ struct GenieChatView: View {
         VStack(spacing: 0) {
             statusBar
             messageList
-            if !compact {
-                suggestionBar
-            }
+            suggestionBar
             if let error = appState.chatError {
                 errorBanner(error)
             }
             chatInputBar
         }
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
-        .task { await appState.refreshRuntimeStatus() }
+        .task {
+            await appState.refreshRuntimeStatus()
+            await appState.refreshRecentChatSessions()
+            await syncVoiceOnOpen()
+        }
+        .onDisappear {
+            Task { await stopVoiceSession() }
+        }
         .onChange(of: appState.summonListen) { _, listen in
             if listen {
                 appState.summonListen = false
                 Task { await startVoiceCapture() }
             }
         }
+        .onChange(of: appState.voiceKillSwitch) { _, killSwitch in
+            Task {
+                if killSwitch {
+                    await stopVoiceSession()
+                } else {
+                    await syncVoiceOnOpen()
+                }
+            }
+        }
+        .onChange(of: appState.voiceInputEnabled) { _, enabled in
+            Task {
+                if enabled {
+                    await syncVoiceOnOpen()
+                } else {
+                    await stopVoiceSession()
+                }
+            }
+        }
+        .onChange(of: appState.voiceWakeWordEnabled) { _, _ in
+            Task {
+                if voice.isRecording || voice.isWakeListening {
+                    await stopVoiceSession()
+                    await syncVoiceOnOpen()
+                } else {
+                    await syncVoiceOnOpen()
+                }
+            }
+        }
+        .onChange(of: appState.voiceStartListeningOnOpen) { _, _ in
+            Task {
+                if voice.isRecording || voice.isWakeListening {
+                    await stopVoiceSession()
+                }
+                await syncVoiceOnOpen()
+            }
+        }
         .onChange(of: voice.liveTranscript) { _, transcript in
-            if !voice.isRecording, !transcript.isEmpty {
+            if !voice.isSpeaking {
                 appState.chatDraft = transcript
             }
+        }
+        .onChange(of: voice.phase) { oldPhase, newPhase in
+            handleVoicePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
         }
         .onChange(of: appState.chatDraft) { _, _ in
             appState.persistChatSnapshot()
@@ -51,45 +97,64 @@ struct GenieChatView: View {
                 .fill(appState.providerHealthy ? Color.green : Color.orange)
                 .frame(width: 6, height: 6)
             Text(appState.providerBadge)
-                .font(.caption2)
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             if let project = appState.activeProjectName {
                 Text("📁 \(project)")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if let pending = appState.pendingToolIntent {
+                Text(pending.replacingOccurrences(of: "_", with: " "))
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12))
+                    .clipShape(Capsule())
             }
             if !appState.taskTimeline.isEmpty {
                 TaskTimelineStrip(entries: appState.taskTimeline)
             }
-            if let hint = appState.localModelStatusMessage, !appState.providerHealthy {
+            if !appState.providerHealthy, let hint = appState.localModelStatusMessage {
                 Text(hint)
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .lineLimit(2)
             }
-            if appState.isChatStreaming {
-                ProgressView().controlSize(.mini)
-                Text("Streaming…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Button("Stop") { appState.cancelActiveChatStream() }
-                    .font(.caption2)
-                    .buttonStyle(.plain)
-            } else if voice.isRecording {
-                Image(systemName: "mic.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption2)
-                Text("Recording…")
-                    .font(.caption2)
-                Button("Cancel") { Task { await voice.cancelRecording() } }
-                    .font(.caption2)
-                    .buttonStyle(.plain)
-            } else if voice.isSpeaking {
-                Text("Speaking…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Menu {
+                Button("New Chat") { appState.startNewChat() }
+                Button("Clear Current Conversation") { appState.clearCurrentConversationMemory() }
+                Divider()
+                Button("Refresh Sessions") {
+                    Task { await appState.refreshRecentChatSessions() }
+                }
+                if !appState.recentChatSessions.isEmpty {
+                    Divider()
+                    ForEach(appState.recentChatSessions.prefix(8)) { session in
+                        Button {
+                            Task { await appState.restoreSession(sessionId: session.id) }
+                        } label: {
+                            Text(session.title)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
             }
-            Spacer()
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+            .help("Recent chats")
+            Button {
+                appState.startNewChat()
+            } label: {
+                Image(systemName: "plus.bubble")
+            }
+            .buttonStyle(.plain)
+            .help("New chat")
+            voiceStatusChip
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
@@ -124,7 +189,7 @@ struct GenieChatView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
-            .frame(minHeight: compact ? 120 : 260, maxHeight: compact ? 180 : .infinity)
+            .frame(minHeight: compact ? 180 : 280, maxHeight: .infinity)
             .onChange(of: appState.chatMessages.count) { _, _ in
                 scrollToBottom(proxy: proxy)
             }
@@ -148,7 +213,7 @@ struct GenieChatView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 6)
+            .padding(.vertical, compact ? 4 : 6)
         }
     }
 
@@ -159,47 +224,62 @@ struct GenieChatView: View {
     }
 
     private var chatInputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            Button {
-                Task { await toggleVoice() }
-            } label: {
-                Image(systemName: voice.isRecording ? "mic.fill" : "mic")
-                    .foregroundStyle(voice.isRecording ? .red : .primary)
-            }
-            .buttonStyle(.plain)
-            .help("Push-to-talk")
-
-            TextEditor(text: $appState.chatDraft)
-                .font(.body)
-                .frame(minHeight: 36, maxHeight: compact ? 56 : 88)
-                .scrollContentBackground(.hidden)
-                .background(Color.secondary.opacity(0.08))
-                .cornerRadius(8)
-                .focused($inputFocused)
-                .onKeyPress(.return, phases: .down) { press in
-                    if press.modifiers.contains(.shift) { return .ignored }
-                    sendMessage()
-                    return .handled
+        VStack(spacing: 0) {
+            Divider()
+            HStack(alignment: .bottom, spacing: 8) {
+                Button {
+                    Task { await toggleVoice() }
+                } label: {
+                    Image(systemName: (voice.isRecording || voice.isWakeListening) ? "mic.fill" : "mic")
+                        .foregroundStyle((voice.isRecording || voice.isWakeListening) ? .red : .primary)
                 }
+                .buttonStyle(.plain)
+                .help("Push-to-talk")
 
-            Button("Send") { sendMessage() }
-                .keyboardShortcut(.return, modifiers: [])
-                .disabled(
-                    appState.isChatSending
-                        || appState.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
+                TextEditor(text: $appState.chatDraft)
+                    .font(.body)
+                    .frame(minHeight: 36, maxHeight: compact ? 56 : 88)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.secondary.opacity(0.08))
+                    .cornerRadius(8)
+                    .focused($inputFocused)
+                    .onKeyPress(.return, phases: .down) { press in
+                        if press.modifiers.contains(.shift) { return .ignored }
+                        sendMessage()
+                        return .handled
+                    }
+
+                Button("Send") { sendMessage() }
+                    .keyboardShortcut(.return, modifiers: [])
+                    .disabled(
+                        appState.isChatSending
+                            || appState.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+            }
+            .padding(10)
+            .background(.ultraThinMaterial)
         }
-        .padding(10)
-        .background(Color.black.opacity(0.15))
     }
 
     private func errorBanner(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
+        HStack(spacing: 8) {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                appState.chatError = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+            }
+            .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.75))
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.75))
     }
 
     private func sendMessage() {
@@ -210,11 +290,13 @@ struct GenieChatView: View {
     }
 
     private func toggleVoice() async {
-        if voice.isRecording {
+        if voice.isRecording || voice.isWakeListening {
             let transcript = await voice.finishPushToTalk()
             if !transcript.isEmpty {
                 appState.chatDraft = transcript
-                await appState.sendChatMessage(transcript)
+                if appState.voiceAutoSendAfterTranscription {
+                    await appState.sendChatMessage(transcript)
+                }
             }
         } else {
             await startVoiceCapture()
@@ -222,16 +304,74 @@ struct GenieChatView: View {
     }
 
     private func startVoiceCapture() async {
+        if appState.voiceKillSwitch || !appState.voiceInputEnabled {
+            appState.chatError = "Voice input is disabled."
+            return
+        }
         let granted = await voice.preparePermissions()
         guard granted else {
             appState.chatError = "Speech or microphone permission denied."
             return
         }
         do {
-            try await voice.startPushToTalk()
+            if appState.voiceWakeWordEnabled {
+                if voice.supportsWakeWord {
+                    try await voice.startWakeListening()
+                } else {
+                    appState.chatError = "Wake word requires on-device speech recognition."
+                }
+            } else {
+                try await voice.startPushToTalk()
+            }
         } catch {
             appState.chatError = error.localizedDescription
         }
+    }
+
+    private func syncVoiceOnOpen() async {
+        guard !appState.voiceKillSwitch, appState.voiceInputEnabled else { return }
+        guard appState.voiceWakeWordEnabled || appState.voiceStartListeningOnOpen else { return }
+        await startVoiceCapture()
+    }
+
+    private func stopVoiceSession() async {
+        await voice.cancelRecording()
+        await voice.interruptPlayback()
+    }
+
+    private func handleVoicePhaseChange(oldPhase: VoiceRuntime.Phase, newPhase: VoiceRuntime.Phase) {
+        guard oldPhase.isWakeListening else { return }
+        guard newPhase.isRecording else { return }
+        guard appState.voiceWakeSoundEnabled else { return }
+        NSSound.beep()
+    }
+
+    private var voiceStatusChip: some View {
+        let label: String
+        switch true {
+        case appState.voiceKillSwitch:
+            label = "Voice Off"
+        case voice.isSpeaking:
+            label = "Speaking"
+        case voice.isWakeListening:
+            label = "Listening"
+        case voice.isRecording:
+            label = "Recording"
+        case voice.phase == .transcribing:
+            label = "Transcribing"
+        case appState.voiceInputEnabled && appState.voiceWakeWordEnabled:
+            label = voice.supportsWakeWord ? "Ready" : "Wake unsupported"
+        case appState.voiceInputEnabled:
+            label = "Idle"
+        default:
+            label = "Voice Off"
+        }
+        return Text(label)
+            .font(.caption2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.12))
+            .clipShape(Capsule())
     }
 }
 
@@ -257,19 +397,47 @@ private struct TaskTimelineStrip: View {
 
 private struct ChatBubble: View {
     let message: ChatMessage
+    @State private var expanded = false
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 24) }
-            Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
-                .font(.caption)
-                .padding(10)
-                .foregroundStyle(foreground)
-                .background(background)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .opacity(message.isStreaming ? 0.92 : 1)
+            VStack(alignment: .leading, spacing: 6) {
+                if shouldCollapse {
+                    Text(expanded ? contentText : collapsedText)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                    Button(expanded ? "Show less" : "Show more") {
+                        expanded.toggle()
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text(contentText)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(10)
+            .foregroundStyle(foreground)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .opacity(message.isStreaming ? 0.92 : 1)
             if message.role != .user { Spacer(minLength: 24) }
         }
+    }
+
+    private var contentText: String {
+        message.content.isEmpty && message.isStreaming ? "Working" : message.content
+    }
+
+    private var shouldCollapse: Bool {
+        contentText.count > 700
+    }
+
+    private var collapsedText: String {
+        String(contentText.prefix(700)) + "…"
     }
 
     private var background: Color {

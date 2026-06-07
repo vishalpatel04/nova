@@ -54,9 +54,20 @@ async def runtime_status(
     ollama_model_ready = False
     status_message: str | None = None
     provider_badge: str | None = None
+    runtime_mode: str | None = None
+    selected_provider: str | None = None
+    selected_model: str | None = None
+    fallback_reason: str | None = None
+    local_available = False
+    wake_word_supported = None
+    voice_on_device_supported = None
 
     if not ollama_reachable:
         status_message = "Local model unavailable. Start Ollama."
+        runtime_mode = "degraded"
+        selected_provider = "local"
+        selected_model = "rule_based"
+        fallback_reason = "provider_unreachable"
     else:
         try:
             available = await runtime._fetch_ollama_models(ProviderName.LOCAL)
@@ -67,12 +78,24 @@ async def runtime_status(
             if ollama_model_ready:
                 provider_badge = f"local · {local_model}"
                 status_message = f"Local model active: {local_model}"
+                runtime_mode = "local_ollama"
+                selected_provider = ProviderName.LOCAL.value
+                selected_model = local_model
+                local_available = True
             else:
                 status_message = (
                     f"Model {local_model} not installed. Run: ollama pull {local_model}"
                 )
+                runtime_mode = "degraded"
+                selected_provider = ProviderName.LOCAL.value
+                selected_model = "rule_based"
+                fallback_reason = "no_model"
         except Exception:
             status_message = "Local model unavailable. Start Ollama."
+            runtime_mode = "degraded"
+            selected_provider = "local"
+            selected_model = "rule_based"
+            fallback_reason = "provider_unreachable"
 
     return RuntimeStatusResponse(
         local_first=True,
@@ -93,6 +116,13 @@ async def runtime_status(
         ollama_model_ready=ollama_model_ready,
         provider_badge=provider_badge,
         status_message=status_message,
+        runtime_mode=runtime_mode,
+        selected_provider=selected_provider,
+        selected_model=selected_model,
+        fallback_reason=fallback_reason,
+        local_available=local_available,
+        wake_word_supported=wake_word_supported,
+        voice_on_device_supported=voice_on_device_supported,
     )
 
 

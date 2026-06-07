@@ -596,6 +596,24 @@ class ProjectMemory(Base):
     )
 
 
+class UserMemory(Base):
+    __tablename__ = "user_memory"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    value_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="user")
+    confidence: Mapped[float] = mapped_column(Float, default=0.9)
+    user_editable: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_memory_user_key"),)
+
+
 class PatchExecution(Base):
     __tablename__ = "patch_executions"
 

@@ -31,6 +31,7 @@ class StreamTelemetry:
     model: str | None = None
     token_count: int = 0
     fallback_used: bool = False
+    fallback_reason: str | None = None
     cancelled: bool = False
     error: str | None = None
     mode: str | None = None
@@ -42,6 +43,7 @@ class StreamTelemetry:
             "model": self.model,
             "token_count": self.token_count,
             "fallback_used": self.fallback_used,
+            "fallback_reason": self.fallback_reason,
             "cancelled": self.cancelled,
             "error": self.error,
             "mode": self.mode,

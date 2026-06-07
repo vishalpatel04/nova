@@ -155,6 +155,7 @@ async def test_runtime_status_does_not_leak_key_values(
     assert resp.status_code == 200
     body = resp.json()
     assert body["provider_badge"] == "local · qwen2.5:7b"
+    assert body["local_available"] is True
     paid = next(p for p in body["providers"] if p["provider"] == "openai")
     assert paid["detail"] == "redacted"
     assert "sk-" not in str(body)

@@ -28,9 +28,22 @@ final class MacAppState: ObservableObject {
     @Published var providerHealthy = false
     @Published var providerModeLabel = "local"
     @Published var providerBadge = "local"
+    @Published var selectedProvider: String?
+    @Published var selectedModel: String?
+    @Published var runtimeMode: String?
+    @Published var fallbackReason: String?
+    @Published var localAvailable = false
     @Published var localModelStatusMessage: String?
     @Published var activeProjectName: String?
     @Published var pendingToolIntent: String?
+    @Published var recentChatSessions: [MacChatSessionSummary] = []
+    @Published var voiceInputEnabled = true
+    @Published var voiceWakeWordEnabled = false
+    @Published var voiceStartListeningOnOpen = false
+    @Published var voiceAutoSendAfterTranscription = false
+    @Published var voiceWakeSoundEnabled = false
+    @Published var voiceStopListeningOnClose = true
+    @Published var voiceKillSwitch = false
     @Published var taskTimeline: [MacTaskTimelineEntry] = []
     @Published var schedulerActive = false
     @Published var activeTasksCount = 0
@@ -105,6 +118,7 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
         restoreLocalChat()
         chatDraft = userDefaults.string(forKey: "nova_chat_draft") ?? ""
+        loadVoicePreferences()
         NotificationCenter.default.addObserver(
             forName: .novaHotkeySummon,
             object: nil,
@@ -126,7 +140,12 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
         menuBarCoordinator.initialize(appState: self)
         Task { await restoreSessionFromBackend() }
-        Task { await refreshRuntimeStatus(); await refreshActiveProject(); await refreshBackgroundStatus() }
+        Task {
+            await refreshRuntimeStatus()
+            await refreshActiveProject()
+            await refreshBackgroundStatus()
+            await refreshRecentChatSessions()
+        }
     }
 
     func refreshBackgroundStatus() async {
@@ -256,15 +275,46 @@ final class MacAppState: ObservableObject {
             var message = chatMessages[index]
             message.content += delta
             chatMessages[index] = message
-        case .done(let intent, let blocked, let sessionId, let activeProject, let pendingToolIntent):
+        case .done(
+            let response,
+            let intent,
+            let blocked,
+            let sessionId,
+            let activeProject,
+            let pendingToolIntent,
+            let runtimeMode,
+            let selectedProvider,
+            let selectedModel,
+            let fallbackReason,
+            let localAvailable
+        ):
             var message = chatMessages[index]
             message.isStreaming = false
+            if !response.isEmpty {
+                message.content = response
+            }
             message.blocked = blocked
             if blocked { message.role = .error }
             chatMessages[index] = message
             activeChatSessionId = sessionId ?? activeChatSessionId
             isChatStreaming = false
             if blocked { chatError = message.content }
+            if let runtimeMode, !runtimeMode.isEmpty {
+                self.runtimeMode = runtimeMode
+            }
+            if let selectedProvider, !selectedProvider.isEmpty {
+                self.selectedProvider = selectedProvider
+            }
+            if let selectedModel, !selectedModel.isEmpty {
+                self.selectedModel = selectedModel
+            }
+            if let fallbackReason, !fallbackReason.isEmpty {
+                self.fallbackReason = fallbackReason
+            }
+            if let localAvailable {
+                self.localAvailable = localAvailable
+            }
+            updateProviderBadge()
             if let activeProject {
                 activeProjectName = activeProject
             } else if intent == "set_project" {
@@ -275,6 +325,7 @@ final class MacAppState: ObservableObject {
             } else if intent == "pending_cancelled" || intent == "pending_expired" || intent == "safe_search" {
                 self.pendingToolIntent = nil
             }
+            Task { await refreshRecentChatSessions() }
             persistChatSnapshot()
         case .cancelled:
             cancelActiveChatStream()
@@ -282,6 +333,7 @@ final class MacAppState: ObservableObject {
             pendingStreamFailed = true
             isChatStreaming = false
             chatMessages.removeAll { $0.id == assistantId }
+            chatError = "Streaming response failed."
         }
     }
 
@@ -317,6 +369,23 @@ final class MacAppState: ObservableObject {
                 || response.intent == "safe_search" {
                 pendingToolIntent = nil
             }
+            if let runtimeMode = response.runtimeMode {
+                self.runtimeMode = runtimeMode
+            }
+            if let selectedProvider = response.selectedProvider {
+                self.selectedProvider = selectedProvider
+            }
+            if let selectedModel = response.selectedModel {
+                self.selectedModel = selectedModel
+            }
+            if let fallbackReason = response.fallbackReason {
+                self.fallbackReason = fallbackReason
+            }
+            if let localAvailable = response.localAvailable {
+                self.localAvailable = localAvailable
+            }
+            updateProviderBadge()
+            Task { await refreshRecentChatSessions() }
         } catch {
             chatError = error.localizedDescription
             chatMessages.append(ChatMessage(role: .error, content: error.localizedDescription))
@@ -386,17 +455,21 @@ final class MacAppState: ObservableObject {
         do {
             let status = try await api.fetchRuntimeStatus()
             providerHealthy = status.ollamaReachable && status.ollamaModelReady
+            localAvailable = status.localAvailable ?? providerHealthy
+            selectedProvider = status.selectedProvider
+            selectedModel = status.selectedModel
+            runtimeMode = status.runtimeMode
+            fallbackReason = status.fallbackReason
             if let badge = status.providerBadge, !badge.isEmpty {
                 providerBadge = badge
                 providerModeLabel = badge
-            } else if status.ollamaReachable {
-                providerModeLabel = "local"
-                providerBadge = "local"
             } else {
-                providerModeLabel = "offline"
-                providerBadge = "offline"
+                updateProviderBadge()
             }
             localModelStatusMessage = status.statusMessage
+            if status.wakeWordSupported != nil || status.voiceOnDeviceSupported != nil {
+                // Current popup-only wake support is local; keep the API values as hints.
+            }
         } catch {
             providerHealthy = false
             providerModeLabel = "offline"
@@ -409,6 +482,32 @@ final class MacAppState: ObservableObject {
         let snapshot = chatStore.load()
         activeChatSessionId = snapshot.sessionId
         chatMessages = snapshot.messages
+    }
+
+    func startNewChat() {
+        activeChatSessionId = nil
+        chatMessages.removeAll()
+        chatDraft = ""
+        pendingToolIntent = nil
+        taskTimeline.removeAll()
+        chatError = nil
+        persistChatSnapshot()
+    }
+
+    func clearCurrentConversationMemory() {
+        startNewChat()
+    }
+
+    func refreshRecentChatSessions() async {
+        guard isPaired else {
+            recentChatSessions = []
+            return
+        }
+        do {
+            recentChatSessions = try await api.fetchChatSessionSummaries()
+        } catch {
+            recentChatSessions = []
+        }
     }
 
     func pollWorkerHealth() async {
@@ -427,6 +526,66 @@ final class MacAppState: ObservableObject {
             globalError = error.localizedDescription
         }
     }
+
+    func loadVoicePreferences() {
+        voiceInputEnabled = userDefaults.object(forKey: Self.voiceInputEnabledKey) as? Bool ?? true
+        voiceWakeWordEnabled = userDefaults.object(forKey: Self.voiceWakeWordEnabledKey) as? Bool ?? false
+        voiceStartListeningOnOpen = userDefaults.object(forKey: Self.voiceStartListeningOnOpenKey) as? Bool ?? false
+        voiceAutoSendAfterTranscription = userDefaults.object(forKey: Self.voiceAutoSendAfterTranscriptionKey) as? Bool ?? false
+        voiceWakeSoundEnabled = userDefaults.object(forKey: Self.voiceWakeSoundEnabledKey) as? Bool ?? false
+        voiceStopListeningOnClose = userDefaults.object(forKey: Self.voiceStopListeningOnCloseKey) as? Bool ?? true
+        voiceKillSwitch = userDefaults.object(forKey: Self.voiceKillSwitchKey) as? Bool ?? false
+    }
+
+    func saveVoicePreferences() {
+        userDefaults.set(voiceInputEnabled, forKey: Self.voiceInputEnabledKey)
+        userDefaults.set(voiceWakeWordEnabled, forKey: Self.voiceWakeWordEnabledKey)
+        userDefaults.set(voiceStartListeningOnOpen, forKey: Self.voiceStartListeningOnOpenKey)
+        userDefaults.set(voiceAutoSendAfterTranscription, forKey: Self.voiceAutoSendAfterTranscriptionKey)
+        userDefaults.set(voiceWakeSoundEnabled, forKey: Self.voiceWakeSoundEnabledKey)
+        userDefaults.set(voiceStopListeningOnClose, forKey: Self.voiceStopListeningOnCloseKey)
+        userDefaults.set(voiceKillSwitch, forKey: Self.voiceKillSwitchKey)
+    }
+
+    func updateProviderBadge() {
+        if let runtimeMode, runtimeMode.contains("degraded") {
+            let reason = fallbackReason ?? "local unavailable"
+            providerBadge = "degraded · \(humanizeFallbackReason(reason))"
+            providerModeLabel = providerBadge
+            return
+        }
+        if let provider = selectedProvider, let model = selectedModel {
+            providerBadge = "\(provider) · \(model)"
+            providerModeLabel = providerBadge
+            return
+        }
+        if let statusMessage = localModelStatusMessage, !statusMessage.isEmpty, !providerHealthy {
+            providerBadge = "degraded · local unavailable"
+            providerModeLabel = providerBadge
+            return
+        }
+        providerBadge = providerHealthy ? "local" : "offline"
+        providerModeLabel = providerBadge
+    }
+
+    private func humanizeFallbackReason(_ reason: String) -> String {
+        switch reason {
+        case "provider_unreachable": return "local unavailable"
+        case "no_model": return "no model installed"
+        case "timeout": return "timeout"
+        case "malformed_response": return "malformed response"
+        case "empty_response": return "empty response"
+        default: return reason.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    private static let voiceInputEnabledKey = "nova_voice_input_enabled"
+    private static let voiceWakeWordEnabledKey = "nova_voice_wake_word_enabled"
+    private static let voiceStartListeningOnOpenKey = "nova_voice_start_on_open"
+    private static let voiceAutoSendAfterTranscriptionKey = "nova_voice_auto_send"
+    private static let voiceWakeSoundEnabledKey = "nova_voice_wake_sound"
+    private static let voiceStopListeningOnCloseKey = "nova_voice_stop_on_close"
+    private static let voiceKillSwitchKey = "nova_voice_kill_switch"
 }
 
 struct LocalChatSnapshot {

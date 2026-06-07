@@ -11,6 +11,9 @@ final class AVFoundationVoiceAdapter: MacSTTProvider, MacTTSProvider {
     private let synthesizer = AVSpeechSynthesizer()
     private var transcriptContinuation: AsyncStream<String>.Continuation?
     private(set) var isListening = false
+    var supportsOnDeviceRecognition: Bool {
+        recognizer?.supportsOnDeviceRecognition == true
+    }
 
     var transcript: AsyncStream<String> {
         AsyncStream { continuation in

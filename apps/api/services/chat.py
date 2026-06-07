@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -23,7 +24,11 @@ from apps.api.services.missions import MissionService
 from apps.api.services.notifications import NotificationService
 from apps.api.services.pending_tool_intents import PendingToolIntentService
 from apps.api.services.projects import ProjectService
-from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
+from apps.api.services.runtime import (
+    ChatSessionService,
+    RuntimeTelemetryService,
+    UserMemoryService,
+)
 from nova_core.auth.principal import Principal
 from nova_core.background.schedules import daily_cron_at
 from nova_core.capabilities.model import (
@@ -45,12 +50,12 @@ from nova_core.models.enums import (
     PendingToolIntentStatus,
     PendingToolIntentType,
 )
-from nova_core.models.orm import Mission
+from nova_core.models.orm import ChatMessageRecord, Mission
 from nova_core.project.inspect import format_inspection, inspect_repo
 from nova_core.project.validation import pick_validation_command, run_validation_command
 from nova_core.providers.router import ProviderConfig, ProviderRouter
 from nova_core.providers.runtime import InferenceRequest, ProviderRuntime, token_usage_dict
-from nova_core.providers.stream_context import StreamCancelToken
+from nova_core.providers.stream_context import StreamCancelToken, StreamTelemetry
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
 from nova_core.tools.code_runtime import CodeRuntime
@@ -70,6 +75,7 @@ from nova_core.tools.provider_security import (
     FileTransmissionDecision,
     evaluate_file_transmission,
     is_cloud_provider,
+    scrub_runtime_detail,
 )
 from nova_core.tools.safe_readonly import SafeReadonlyTools
 from nova_core.tools.search_scopes import resolve_search_scope
@@ -106,10 +112,17 @@ HELP_TEXT = """NOVA commands:
 - search <pattern> in ~/Downloads|~/Documents|~/Desktop|~/Projects — read-only folder search
 - search all approved folders for <pattern> — search Desktop, Documents, Downloads, Projects
 - search my computer for <pattern> — prompts to search approved folders
+- remember that <fact> — save a user-approved memory
+- what do you remember about me? — list saved memory
+- forget <memory key> — delete saved memory
 - help — this message
 
 Patch apply requires separate approval + Apply Approved Patch action.
 Background tasks never auto-apply patches. Protected paths always blocked."""
+
+MAX_RECENT_CHAT_MESSAGES = 16
+MAX_MEMORY_LINES = 8
+MAX_CONTEXT_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -219,6 +232,10 @@ class ChatService:
             "create_branch": self._create_branch,
             "commit_changes": self._commit_changes,
             "task_history": self._task_history,
+            "memory_summary": self._memory_summary,
+            "remember_memory": self._remember_memory,
+            "forget_memory": self._forget_memory,
+            "memory_lookup": self._memory_lookup,
         }.get(intent)
 
         if handler and intent != "general":
@@ -290,17 +307,13 @@ class ChatService:
             await self._persist_assistant(sessions, chat_session, pending_response)
             return pending_response
 
-        inference = await self._provider_runtime.infer(
-            InferenceRequest(prompt=text, intent=intent, stream=stream)
-        )
-        await RuntimeTelemetryService(self.session).record_model_usage(inference)
-        usage = token_usage_dict(inference)
-        response = self._response(
-            inference.content,
-            intent="general",
+        response = await self._general_chat_response(
+            principal,
+            chat_session,
+            text,
+            intent=intent,
             routing=routing,
-            session_id=chat_session.id,
-            token_usage=usage,
+            stream=stream,
         )
         await self._persist_assistant(sessions, chat_session, response)
         return response
@@ -467,10 +480,20 @@ class ChatService:
                 yield event
             return
 
+        prompt, context_meta = await self._build_general_prompt(principal, chat_session, text)
+        telemetry = StreamTelemetry(stream_id=cancel.stream_id if cancel else "inline")
         content_parts: list[str] = []
-        inference_request = InferenceRequest(prompt=text, intent=intent, stream=True)
-        async for chunk in self._provider_runtime.stream(inference_request, cancel=cancel):
+        inference_request = InferenceRequest(prompt=prompt, intent=intent, stream=True)
+        stream_fn = self._provider_runtime.stream
+        stream_kwargs: dict[str, Any] = {"cancel": cancel}
+        if "telemetry" in inspect.signature(stream_fn).parameters:
+            stream_kwargs["telemetry"] = telemetry
+        async for chunk in stream_fn(
+            inference_request,
+            **stream_kwargs,
+        ):
             if cancel and cancel.cancelled:
+                telemetry.cancelled = True
                 yield {"event": "cancelled", "data": {}}
                 await self._persist_partial_assistant(
                     sessions,
@@ -485,6 +508,7 @@ class ChatService:
             yield {"event": "token", "data": {"delta": chunk}}
 
         if cancel and cancel.cancelled:
+            telemetry.cancelled = True
             yield {"event": "cancelled", "data": {}}
             await self._persist_partial_assistant(
                 sessions,
@@ -498,13 +522,14 @@ class ChatService:
 
         content = "".join(content_parts).strip() or self._provider_runtime._default_help()
         usage = {
-            "provider": "local",
-            "model": "streamed",
-            "input_tokens": self._provider_runtime._estimate_tokens(text),
+            "provider": telemetry.provider or "local",
+            "model": telemetry.model or "streamed",
+            "input_tokens": self._provider_runtime._estimate_tokens(prompt),
             "output_tokens": self._provider_runtime._estimate_tokens(content),
-            "mode": "stream",
-            "fallback_used": False,
-            "error": None,
+            "mode": telemetry.mode or "stream",
+            "fallback_used": telemetry.fallback_used,
+            "fallback_reason": telemetry.fallback_reason,
+            "error": telemetry.fallback_reason,
         }
         response = self._response(
             content,
@@ -512,16 +537,27 @@ class ChatService:
             routing=routing,
             session_id=chat_session.id,
             token_usage=usage,
+            runtime_mode=telemetry.mode or ("degraded" if telemetry.fallback_reason else "local"),
+            selected_provider=telemetry.provider or "local",
+            selected_model=telemetry.model or "streamed",
+            fallback_reason=telemetry.fallback_reason,
+            local_available=context_meta.get("local_available"),
         )
         await self._persist_assistant(sessions, chat_session, response)
         yield {
             "event": "done",
             "data": {
+                "response": response["response"],
                 "intent": response["intent"],
                 "blocked": response["blocked"],
                 "session_id": chat_session.id,
                 "token_usage": usage,
                 "routing": response.get("routing"),
+                "runtime_mode": response.get("runtime_mode"),
+                "selected_provider": response.get("selected_provider"),
+                "selected_model": response.get("selected_model"),
+                "fallback_reason": response.get("fallback_reason"),
+                "local_available": response.get("local_available"),
             },
         }
 
@@ -547,6 +583,12 @@ class ChatService:
                 "routing": response.get("routing"),
                 "active_project": response.get("active_project"),
                 "pending_tool_intent": response.get("pending_tool_intent"),
+                "response": response.get("response"),
+                "runtime_mode": response.get("runtime_mode"),
+                "selected_provider": response.get("selected_provider"),
+                "selected_model": response.get("selected_model"),
+                "fallback_reason": response.get("fallback_reason"),
+                "local_available": response.get("local_available"),
             },
         }
 
@@ -618,9 +660,36 @@ class ChatService:
             pattern = text[len("search my computer for ") :].strip()
             return "search_computer_prompt", {"pattern": pattern}
 
+        if lowered in {"what do you remember about me", "what do you remember about me?"}:
+            return "memory_summary", {}
+
+        if lowered.startswith("remember that "):
+            return "remember_memory", {"statement": text[len("remember that ") :].strip()}
+
+        if lowered.startswith("remember "):
+            return "remember_memory", {"statement": text[len("remember ") :].strip()}
+
+        if lowered.startswith("forget that "):
+            return "forget_memory", {"statement": text[len("forget that ") :].strip()}
+
+        if lowered.startswith("forget "):
+            return "forget_memory", {"statement": text[len("forget ") :].strip()}
+
+        memory_lookup = self._parse_memory_lookup(text)
+        if memory_lookup is not None:
+            return "memory_lookup", memory_lookup
+
+        broad_search = self._parse_broad_personal_search(text)
+        if broad_search is not None:
+            return "search_computer_prompt", broad_search
+
         if lowered.startswith("search all approved folders for "):
             pattern = text[len("search all approved folders for ") :].strip()
             return "safe_search", {"pattern": pattern, "scope": "all_approved"}
+
+        scoped_personal = self._parse_scoped_personal_search(text)
+        if scoped_personal is not None:
+            return "safe_search", scoped_personal
 
         if lowered.startswith("search "):
             remainder = text[7:].strip()
@@ -830,6 +899,281 @@ class ChatService:
             extra["pending_tool_intent"] = self._pending_tool_intent_type
             self._pending_tool_intent_type = None
         return extra
+
+    def _parse_scoped_personal_search(self, text: str) -> dict[str, str] | None:
+        normalized = re.sub(r"\s+", " ", text.strip())
+        folder_map = {
+            "downloads": "~/Downloads",
+            "download folder": "~/Downloads",
+            "my downloads": "~/Downloads",
+            "documents": "~/Documents",
+            "document folder": "~/Documents",
+            "my documents": "~/Documents",
+            "desktop": "~/Desktop",
+            "my desktop": "~/Desktop",
+            "projects": "~/Projects",
+            "my projects": "~/Projects",
+        }
+        patterns = (
+            (
+                r"^(?:can you |could you |please )?"
+                r"(?:search|find|look for|search for|find files related to|"
+                r"look for files related to)\s+(?P<pattern>.+?)\s+"
+                r"(?:in|inside|under)\s+(?:my\s+)?"
+                r"(?P<folder>downloads?|download folder|my downloads|"
+                r"documents?|document folder|my documents|desktop|my desktop|"
+                r"projects|my projects)(?:\s+folder)?$"
+            ),
+            (
+                r"^(?:can you |could you |please )?"
+                r"(?:search|find|look for)\s+(?:my\s+)?"
+                r"(?P<folder>downloads?|download folder|my downloads|"
+                r"documents?|document folder|my documents|desktop|my desktop|"
+                r"projects|my projects)\s+for\s+(?P<pattern>.+)$"
+            ),
+            (
+                r"^search\s+(?P<pattern>.+?)\s+in\s+(?:my\s+)?"
+                r"(?P<folder>downloads?|download folder|my downloads|"
+                r"documents?|document folder|my documents|desktop|my desktop|"
+                r"projects|my projects)(?:\s+folder)?$"
+            ),
+        )
+        for pattern in patterns:
+            match = re.match(pattern, normalized, re.I)
+            if not match:
+                continue
+            folder = match.group("folder").lower().strip()
+            path = folder_map.get(folder)
+            if not path:
+                continue
+            search_pattern = match.group("pattern").strip()
+            if not search_pattern:
+                return None
+            return {"pattern": search_pattern, "path": path, "scope": "path"}
+        return None
+
+    def _parse_broad_personal_search(self, text: str) -> dict[str, str] | None:
+        normalized = re.sub(r"\s+", " ", text.strip())
+        match = re.match(
+            (
+                r"^(?:can you |could you |please )?"
+                r"(?:search|find|look for)\s+everything related to\s+"
+                r"(?P<pattern>.+?)\s+on my mac$"
+            ),
+            normalized,
+            re.I,
+        )
+        if match:
+            return {"pattern": match.group("pattern").strip()}
+        match = re.match(
+            (
+                r"^(?:can you |could you |please )?"
+                r"(?:search|find|look for)\s+my computer for\s+(?P<pattern>.+)$"
+            ),
+            normalized,
+            re.I,
+        )
+        if match:
+            return {"pattern": match.group("pattern").strip()}
+        return None
+
+    def _parse_memory_lookup(self, text: str) -> dict[str, str] | None:
+        normalized = re.sub(r"\s+", " ", text.strip())
+        match = re.match(
+            (
+                r"^where (?:are|is|did i say) (?:my |the )?"
+                r"(?P<subject>.+?)(?: usually)? "
+                r"(?:stored|kept|located|saved)?\??$"
+            ),
+            normalized,
+            re.I,
+        )
+        if match:
+            return {"subject": match.group("subject").strip()}
+        match = re.match(
+            (
+                r"^where did i say (?:my |the )?"
+                r"(?P<subject>.+?) (?:are|is) "
+                r"(?:probably|usually)?(?:\s+in|\s+stored in)? "
+                r"(?P<location>.+?)\??$"
+            ),
+            normalized,
+            re.I,
+        )
+        if match:
+            return {
+                "subject": match.group("subject").strip(),
+                "location": match.group("location").strip(),
+            }
+        return None
+
+    async def _general_chat_response(
+        self,
+        principal: Principal,
+        chat_session: Any,
+        text: str,
+        *,
+        intent: str,
+        routing: Any | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        prompt, context_meta = await self._build_general_prompt(principal, chat_session, text)
+        inference = await self._provider_runtime.infer(
+            InferenceRequest(prompt=prompt, intent=intent, stream=stream)
+        )
+        await RuntimeTelemetryService(self.session).record_model_usage(inference)
+        usage = token_usage_dict(inference)
+        return self._response(
+            inference.content.strip() or self._provider_runtime._default_help(),
+            intent="general",
+            routing=routing,
+            session_id=chat_session.id,
+            token_usage=usage,
+            runtime_mode=inference.mode,
+            selected_provider=inference.provider.value,
+            selected_model=inference.model,
+            fallback_reason=inference.fallback_reason,
+            local_available=context_meta.get("local_available"),
+        )
+
+    async def _build_general_prompt(
+        self,
+        principal: Principal,
+        chat_session: Any,
+        text: str,
+    ) -> tuple[str, dict[str, Any]]:
+        sessions = ChatSessionService(self.session)
+        recent_messages = await sessions.get_recent_messages(
+            principal, chat_session.id, limit=MAX_RECENT_CHAT_MESSAGES
+        )
+        memory_svc = UserMemoryService(self.session)
+        memories = await memory_svc.list_memories(principal, limit=MAX_MEMORY_LINES)
+        project_svc = ProjectService(self.session, self.settings)
+        active_project = await project_svc.get_active_project_or_none(principal)
+
+        prompt_lines = [
+            "You are NOVA, a concise desktop assistant.",
+            "Keep responses short, direct, and practical.",
+        ]
+        if active_project is not None:
+            prompt_lines.append(
+                f"Active project: {active_project.project_name} ({active_project.project_root})"
+            )
+        if memories:
+            prompt_lines.append("Remembered facts:")
+            for memory in memories[:MAX_MEMORY_LINES]:
+                prompt_lines.append(f"- {memory.key}: {memory.value_summary}")
+        if recent_messages:
+            prompt_lines.append("Recent conversation:")
+            for record in recent_messages[-MAX_RECENT_CHAT_MESSAGES:]:
+                if self._should_include_prompt_message(record):
+                    prompt_lines.append(
+                        f"- {record.role}: {self._bounded_prompt_text(record.content)}"
+                    )
+        prompt_lines.append(f"User: {self._bounded_prompt_text(text)}")
+        prompt_lines.append("NOVA:")
+        prompt = "\n".join(prompt_lines)
+        if len(prompt) > MAX_CONTEXT_CHARS:
+            header = "\n".join(prompt_lines[:2])
+            tail = "\n".join(prompt_lines[2:])
+            prompt = header + "\n" + tail[-max(0, MAX_CONTEXT_CHARS - len(header) - 1) :]
+        return prompt, {
+            "local_available": bool(
+                self.settings.nova_ollama_base_url
+                or self.settings.nova_qwen_base_url
+                or self.settings.nova_deepseek_base_url
+            ),
+            "active_project": active_project.project_name if active_project else None,
+        }
+
+    def _should_include_prompt_message(self, record: ChatMessageRecord) -> bool:
+        return (
+            not record.blocked
+            and record.role in {"user", "assistant"}
+            and record.intent
+            not in {"read_file", "list_directory", "safe_search", "ripgrep_search"}
+        )
+
+    def _bounded_prompt_text(self, text: str, *, limit: int = 320) -> str:
+        cleaned = " ".join(text.split())
+        return cleaned[:limit]
+
+    async def _memory_summary(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        memory_svc = UserMemoryService(self.session)
+        memories = await memory_svc.list_memories(principal, limit=12)
+        if not memories:
+            return "I don't have any saved memory yet."
+        lines = ["What I remember about you:"]
+        for memory in memories:
+            lines.append(f"- {memory.key}: {memory.value_summary}")
+        return "\n".join(lines)
+
+    async def _remember_memory(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        statement = args.get("statement", "").strip()
+        if not statement:
+            return "Usage: remember that <fact>"
+        parsed = self._parse_memory_fact(statement)
+        memory_svc = UserMemoryService(self.session)
+        try:
+            record = await memory_svc.remember(
+                principal,
+                key=parsed["key"],
+                value_summary=parsed["value_summary"],
+                source="user",
+                confidence=0.9,
+                user_editable=True,
+            )
+        except Exception as exc:
+            return f"Blocked: {exc}"
+        return f"Remembered {record.key}: {record.value_summary}"
+
+    async def _forget_memory(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        statement = args.get("statement", "").strip()
+        if not statement:
+            return "Usage: forget <memory key>"
+        memory_svc = UserMemoryService(self.session)
+        key = self._parse_memory_fact(statement).get("key", statement)
+        deleted = await memory_svc.forget(principal, key)
+        if not deleted:
+            return f"I don't have a saved memory for '{key}'."
+        return f"Forgot {key}."
+
+    async def _memory_lookup(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        subject = args.get("subject", "").strip()
+        if not subject:
+            return "I don't know that yet."
+        memory_svc = UserMemoryService(self.session)
+        memories = await memory_svc.list_memories(principal, limit=20)
+        subject_norm = self._normalize_memory_subject(subject)
+        for memory in memories:
+            key_norm = self._normalize_memory_subject(memory.key)
+            if subject_norm in key_norm or key_norm in subject_norm:
+                return memory.value_summary
+        return "I don't know that yet."
+
+    def _parse_memory_fact(self, statement: str) -> dict[str, str]:
+        text = re.sub(r"\s+", " ", statement.strip()).rstrip(".")
+        patterns = (
+            r"^(?P<key>.+?)\s+(?:is|are|was|were)\s+(?:usually\s+)?(?:stored\s+)?(?:in|at|on|under|inside)\s+(?P<value>.+)$",
+            r"^(?:my|the)\s+(?P<key>.+?)\s+(?:is|are)\s+(?:usually\s+)?(?:in|at|on|under|inside)\s+(?P<value>.+)$",
+            (
+                r"^(?P<key>.+?)\s+(?:usually\s+)?"
+                r"(?:lives|lives in|resides|resides in)\s+(?P<value>.+)$"
+            ),
+        )
+        for pattern in patterns:
+            match = re.match(pattern, text, re.I)
+            if match:
+                key = self._normalize_memory_subject(match.group("key"))
+                value = match.group("value").strip()
+                return {"key": key, "value_summary": value}
+        key = self._normalize_memory_subject(text)
+        return {"key": key, "value_summary": text}
+
+    def _normalize_memory_subject(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text.strip()).lower()
+        cleaned = cleaned.replace("my ", "").replace("the ", "")
+        return cleaned[:255]
 
     async def _try_resolve_pending_tool_intent(
         self,
@@ -1891,7 +2235,7 @@ class ChatService:
             action="chat.action_blocked",
             resource_type="chat",
             resource_id=None,
-            details={"reason": reason, "message_preview": message[:120]},
+            details={"reason": reason, "message_preview": scrub_runtime_detail(message[:120])},
         )
         await self.session.commit()
 
@@ -1917,7 +2261,7 @@ class ChatService:
             action=f"chat.{intent}",
             resource_type="chat",
             resource_id=intent,
-            details={"args": args, "response_preview": body[:200]},
+            details={"args": args, "response_preview": scrub_runtime_detail(body[:200])},
         )
         await self.session.commit()
 
@@ -1973,6 +2317,11 @@ class ChatService:
         patch_preview: str | None = None,
         active_project: str | None = None,
         pending_tool_intent: str | None = None,
+        runtime_mode: str | None = None,
+        selected_provider: str | None = None,
+        selected_model: str | None = None,
+        fallback_reason: str | None = None,
+        local_available: bool | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
@@ -2003,4 +2352,14 @@ class ChatService:
                 "mode": routing.mode,
                 "paid_call_allowed": routing.paid_call_allowed,
             }
+        if runtime_mode is not None:
+            payload["runtime_mode"] = runtime_mode
+        if selected_provider is not None:
+            payload["selected_provider"] = selected_provider
+        if selected_model is not None:
+            payload["selected_model"] = selected_model
+        if fallback_reason is not None:
+            payload["fallback_reason"] = fallback_reason
+        if local_available is not None:
+            payload["local_available"] = local_available
         return payload
