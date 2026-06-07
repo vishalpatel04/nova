@@ -15,6 +15,7 @@ from nova_core.capabilities.model import (
     compute_action_fingerprint,
 )
 from nova_core.models.orm import ApprovalRequest, AuditEvent
+from nova_core.schemas.errors import ConflictError
 from nova_core.tools.provider_security import scrub_runtime_detail
 
 
@@ -109,6 +110,42 @@ async def test_one_time_approval_cannot_be_reused(
 
     reuse = await auth_client.post(f"/api/v1/approvals/{approval_id}/approve")
     assert reuse.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_consumed_approval_cannot_be_consumed_twice(
+    auth_client: AsyncClient, paired_client_token, db_session: AsyncSession
+) -> None:
+    _device_id, token = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token}"
+
+    chat = await auth_client.post("/api/v1/chat", json={"message": "run shell ls"})
+    approval_id = chat.json()["approval_id"]
+    await auth_client.post(f"/api/v1/approvals/{approval_id}/approve")
+    record = await db_session.get(ApprovalRequest, approval_id)
+    assert record is not None
+
+    svc = ApprovalRequestService(db_session)
+    principal = Principal(
+        principal_type="device",
+        principal_id=_device_id,
+        user_id=record.user_id,
+        device_id=_device_id,
+        token_role="client",
+    )
+    first = await svc.consume(
+        principal,
+        approval_id,
+        expected_fingerprint=record.action_fingerprint,
+    )
+    assert first.status == ActionApprovalStatus.CONSUMED.value
+
+    with pytest.raises(ConflictError, match="consumed"):
+        await svc.consume(
+            principal,
+            approval_id,
+            expected_fingerprint=record.action_fingerprint,
+        )
 
 
 @pytest.mark.asyncio

@@ -198,6 +198,21 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(Response.self, from: data).items
     }
 
+    func fetchActionableApprovals() async throws -> MacActionableApprovals {
+        let data = try await request(path: "/api/v1/approvals/actionable")
+        return try decoder.decode(MacActionableApprovals.self, from: data)
+    }
+
+    func runApprovedExecution(approvalId: String) async throws -> MacShellExecutionResult {
+        struct Body: Encodable { let approvalId: String }
+        let data = try await request(
+            path: "/api/v1/executions/run-approved",
+            method: "POST",
+            body: Body(approvalId: approvalId)
+        )
+        return try decoder.decode(MacShellExecutionResult.self, from: data)
+    }
+
     func approveRequest(id: String) async throws -> MacApprovalRequest {
         let data = try await request(path: "/api/v1/approvals/\(id)/approve", method: "POST")
         return try decoder.decode(MacApprovalRequest.self, from: data)
@@ -385,6 +400,24 @@ struct MacApprovalRequest: Identifiable, Decodable {
     let status: String
     let createdAt: Date
     let expiresAt: Date
+}
+
+struct MacActionableApprovals: Decodable {
+    let pending: [MacApprovalRequest]
+    let approved: [MacApprovalRequest]
+}
+
+struct MacShellExecutionResult: Decodable {
+    let executionId: String
+    let approvalId: String
+    let capability: String
+    let commandPreview: String
+    let status: String
+    let stdoutExcerpt: String?
+    let stderrExcerpt: String?
+    let exitCode: Int?
+    let startedAt: Date?
+    let finishedAt: Date?
 }
 
 enum StringValue: Decodable {

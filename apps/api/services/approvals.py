@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nova_core.auth.principal import Principal
@@ -124,6 +124,21 @@ class ApprovalRequestService:
         )
         return list(result.scalars().all())
 
+    async def list_approved(self, principal: Principal) -> list[ApprovalRequest]:
+        await self.expire_stale()
+        if not principal.device_id:
+            return []
+        result = await self.session.execute(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.user_id == principal.user_id,
+                ApprovalRequest.device_id == principal.device_id,
+                ApprovalRequest.status == ActionApprovalStatus.APPROVED.value,
+            )
+            .order_by(ApprovalRequest.decided_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def get_owned(self, approval_id: str, principal: Principal) -> ApprovalRequest:
         record = await self.session.get(ApprovalRequest, approval_id)
         if record is None:
@@ -190,16 +205,40 @@ class ApprovalRequestService:
         *,
         expected_fingerprint: str,
     ) -> ApprovalRequest:
-        record = await self.get_owned(approval_id, principal)
-        if record.status != ActionApprovalStatus.APPROVED.value:
+        stmt = (
+            update(ApprovalRequest)
+            .where(
+                ApprovalRequest.id == approval_id,
+                ApprovalRequest.user_id == principal.user_id,
+                ApprovalRequest.device_id == principal.device_id,
+                ApprovalRequest.status == ActionApprovalStatus.APPROVED.value,
+                ApprovalRequest.action_fingerprint == expected_fingerprint,
+            )
+            .values(
+                status=ActionApprovalStatus.CONSUMED.value,
+                consumed_at=_utc_now(),
+            )
+        )
+        result = await self.session.execute(stmt)
+        rowcount = getattr(result, "rowcount", None) or 0
+        if rowcount != 1:
+            locked = await self.session.execute(
+                select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
+            )
+            record = locked.scalar_one_or_none()
+            if record is None:
+                raise NotFoundError("approval_request", approval_id)
+            if record.user_id != principal.user_id or record.device_id != principal.device_id:
+                raise UnauthorizedError("Approval request ownership mismatch")
+            if record.action_fingerprint != expected_fingerprint:
+                raise ConflictError("Approval action fingerprint mismatch")
+            if _as_utc(record.expires_at) < _utc_now():
+                record.status = ActionApprovalStatus.EXPIRED.value
+                raise ConflictError("Approval request expired")
             raise ConflictError(f"Approval request is {record.status}, expected approved")
-        if record.action_fingerprint != expected_fingerprint:
-            raise ConflictError("Approval action fingerprint mismatch")
-        if _as_utc(record.expires_at) < _utc_now():
-            record.status = ActionApprovalStatus.EXPIRED.value
-            raise ConflictError("Approval request expired")
-        record.status = ActionApprovalStatus.CONSUMED.value
-        record.consumed_at = _utc_now()
+
+        record = await self.session.get(ApprovalRequest, approval_id)
+        assert record is not None
         await record_audit_event(
             self.session,
             actor_type="device",

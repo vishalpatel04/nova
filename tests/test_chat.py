@@ -55,17 +55,14 @@ async def test_chat_blocks_unsafe_request(
     resp = await auth_client.post("/api/v1/chat", json={"message": "run shell rm -rf /"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["approval_required"] is True
-    assert data["blocked"] is False
-    assert "I can do this after approval" in data["response"]
-    assert data["approval_id"]
+    assert data["blocked"] is True
+    assert data.get("approval_required") is not True
 
-    record = await db_session.get(ApprovalRequest, data["approval_id"])
-    assert record is not None
-    assert record.status == "pending"
+    pending = await db_session.execute(select(ApprovalRequest))
+    assert pending.scalars().all() == []
 
     result = await db_session.execute(
-        select(AuditEvent).where(AuditEvent.action == "approval.requested")
+        select(AuditEvent).where(AuditEvent.action == "chat.action_blocked")
     )
     assert result.scalars().first() is not None
 

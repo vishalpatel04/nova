@@ -210,6 +210,28 @@ class ApprovalPendingListResponse(BaseModel):
     items: list[ApprovalRequestResponse] = Field(default_factory=list)
 
 
+class RunApprovedExecutionRequest(BaseModel):
+    approval_id: str = Field(min_length=36, max_length=36)
+
+
+class ShellExecutionResponse(BaseModel):
+    execution_id: str
+    approval_id: str
+    capability: str
+    command_preview: str
+    status: str
+    stdout_excerpt: str | None = None
+    stderr_excerpt: str | None = None
+    exit_code: int | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class ApprovalActionableListResponse(BaseModel):
+    pending: list[ApprovalRequestResponse] = Field(default_factory=list)
+    approved: list[ApprovalRequestResponse] = Field(default_factory=list)
+
+
 class ChatMessageRecordResponse(BaseModel):
     id: str
     role: str
