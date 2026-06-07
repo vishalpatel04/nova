@@ -136,8 +136,12 @@ def test_set_project_rejects_symlink_escape(
     outside.mkdir()
     link = allowed / "escape"
     link.symlink_to(outside)
-    monkeypatch.setattr("nova_core.tools.safe_paths.expand_allowed_roots", lambda roots=None: [allowed.resolve()])
-    monkeypatch.setattr("nova_core.project.context.expand_allowed_roots", lambda roots=None: [allowed.resolve()])
+    monkeypatch.setattr(
+        "nova_core.tools.safe_paths.expand_allowed_roots", lambda roots=None: [allowed.resolve()]
+    )
+    monkeypatch.setattr(
+        "nova_core.project.context.expand_allowed_roots", lambda roots=None: [allowed.resolve()]
+    )
     result = validate_project_root(str(link))
     assert result.allowed is False
 
