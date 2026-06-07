@@ -11,11 +11,13 @@ from typing import Any, cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.services.agent_plans import AgentPlanService
 from apps.api.services.approvals import ApprovalRequestService
 from apps.api.services.background_scheduler import BackgroundSchedulerService
 from apps.api.services.background_tasks import BackgroundTaskService
 from apps.api.services.coding_tasks import CodingTaskService
 from apps.api.services.devices import DeviceService
+from apps.api.services.git_workflow import GitWorkflowService
 from apps.api.services.missions import MissionService
 from apps.api.services.notifications import NotificationService
 from apps.api.services.projects import ProjectService
@@ -63,7 +65,14 @@ HELP_TEXT = """NOVA commands:
 - inspect repo — inspect active project
 - summarize repo — short project summary
 - run validation — run safe test/lint command
-- fix failing tests — inspect, validate, propose patch (approval required)
+- fix failing tests — multi-agent orchestration plan (approval required)
+- create coding plan — start bounded agent orchestration
+- show active plan / show plan steps — orchestration status
+- cancel plan / retry failed step — orchestration controls
+- inspect this repo and propose a patch — orchestration workflow
+- which provider lane is active? — trust lane status
+- propose commit / create approved branch / commit approved changes — git workflow
+- show task history — recent project task history
 - background tasks — list scheduled background tasks
 - create daily repo check at 9am — schedule daily health check
 - create repo validation every 6 hours — schedule validation
@@ -174,6 +183,17 @@ class ChatService:
             "notifications": self._notifications_list,
             "failed_background_tasks": self._failed_background_tasks,
             "summarize_latest_run": self._summarize_latest_run,
+            "orchestration_plan": self._orchestration_plan,
+            "show_active_plan": self._show_active_plan,
+            "show_plan_steps": self._show_active_plan,
+            "cancel_plan": self._cancel_plan,
+            "retry_plan_step": self._retry_plan_step,
+            "provider_lane": self._provider_lane,
+            "external_provider_request": self._external_provider_request,
+            "propose_commit": self._propose_commit,
+            "create_branch": self._create_branch,
+            "commit_changes": self._commit_changes,
+            "task_history": self._task_history,
         }.get(intent)
 
         if handler:
@@ -348,6 +368,17 @@ class ChatService:
             "notifications": self._notifications_list,
             "failed_background_tasks": self._failed_background_tasks,
             "summarize_latest_run": self._summarize_latest_run,
+            "orchestration_plan": self._orchestration_plan,
+            "show_active_plan": self._show_active_plan,
+            "show_plan_steps": self._show_active_plan,
+            "cancel_plan": self._cancel_plan,
+            "retry_plan_step": self._retry_plan_step,
+            "provider_lane": self._provider_lane,
+            "external_provider_request": self._external_provider_request,
+            "propose_commit": self._propose_commit,
+            "create_branch": self._create_branch,
+            "commit_changes": self._commit_changes,
+            "task_history": self._task_history,
         }.get(intent)
 
         if handler:
@@ -563,6 +594,59 @@ class ChatService:
         if lowered in {"run validation", "validate project", "run tests", "run validation tests"}:
             return "run_validation", {}
 
+        if lowered in {"show active plan", "active plan", "current plan"}:
+            return "show_active_plan", {}
+
+        if lowered in {"show plan steps", "plan steps", "plan timeline"}:
+            return "show_plan_steps", {}
+
+        if lowered.startswith("cancel plan"):
+            plan_id = text[len("cancel plan") :].strip()
+            return "cancel_plan", {"plan_id": plan_id}
+
+        retry_match = re.match(r"retry failed step(?: (\d+))?", lowered)
+        if retry_match:
+            return "retry_plan_step", {"step_index": retry_match.group(1) or "0"}
+
+        if lowered in {
+            "create coding plan",
+            "create orchestration plan",
+        } or lowered.startswith("create coding plan "):
+            objective = text.split("create coding plan", 1)[-1].strip() or "Fix failing tests"
+            return "orchestration_plan", {"objective": objective}
+
+        if lowered in {
+            "which provider lane is active?",
+            "which provider lane is active",
+            "provider lane",
+            "trust lane",
+        }:
+            return "provider_lane", {}
+
+        if lowered.startswith("enable external provider"):
+            return "external_provider_request", {"request": text}
+
+        if lowered.startswith("propose commit"):
+            return "propose_commit", {"message": text[len("propose commit") :].strip()}
+
+        if lowered.startswith("create approved branch"):
+            branch = text[len("create approved branch") :].strip()
+            return "create_branch", {"branch_name": branch}
+
+        if lowered in {"commit approved changes", "commit locally", "commit approved"}:
+            return "commit_changes", {}
+
+        if lowered in {"show task history", "task history"}:
+            return "task_history", {}
+
+        orchestration_triggers = (
+            "inspect this repo and propose a patch",
+            "inspect this repo and fix",
+            "inspect repo and fix",
+        )
+        if any(lowered.startswith(t) or t in lowered for t in orchestration_triggers):
+            return "orchestration_plan", {"objective": text}
+
         if lowered in {"background tasks", "list background tasks", "scheduled tasks"}:
             return "background_tasks", {}
 
@@ -628,12 +712,17 @@ class ChatService:
         coding_triggers = (
             "fix failing test",
             "fix failing tests",
+        )
+        if any(lowered.startswith(t) or t in lowered for t in coding_triggers):
+            return "orchestration_plan", {"objective": text}
+
+        legacy_coding = (
             "propose patch",
             "analyze this repo",
             "explain this error",
             "explain error",
         )
-        if any(lowered.startswith(t) or t in lowered for t in coding_triggers):
+        if any(lowered.startswith(t) or t in lowered for t in legacy_coding):
             return "coding_task", {"request": text}
 
         if re.search(
@@ -1179,6 +1268,175 @@ class ChatService:
                 "Open Settings → Approvals to approve, then Apply Approved Patch."
             )
         return str(result.get("message") or result.get("summary") or "Coding task finished.")
+
+    async def _orchestration_plan(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        session_id: str | None = None,
+        **_kw: Any,
+    ) -> str:
+        _ = session_id
+        objective = args.get("objective", "Fix failing tests").strip()
+        svc = AgentPlanService(self.session, self.settings)
+        try:
+            plan = await svc.create_plan(principal, objective=objective)
+            steps = await svc._load_steps(plan.id)
+            result = svc._plan_response(plan, steps)
+        except Exception as exc:
+            return f"Blocked: {exc}"
+        self._last_task_meta = {
+            "plan_id": result.get("plan_id"),
+            "approval_id": result.get("approval_id"),
+            "timeline": result.get("steps"),
+        }
+        if result.get("waiting_approval") and result.get("approval_id"):
+            return (
+                "I can do this after approval.\n\n"
+                f"Plan {result['plan_id']} — {result.get('status')}\n"
+                f"Reviewer: {result.get('reviewer_verdict', 'pending')}\n"
+                f"Approval ID: {result['approval_id']}\n"
+                "Approve patch, then Apply Approved Patch explicitly."
+            )
+        lines = [
+            f"Agent plan {result['plan_id']}",
+            f"Status: {result.get('status')}",
+            f"Lane: {result.get('provider_lane')}",
+            f"Steps: {len(result.get('steps', []))}",
+        ]
+        if result.get("summary"):
+            lines.append(str(result["summary"])[:1500])
+        return "\n".join(lines)
+
+    async def _show_active_plan(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = AgentPlanService(self.session, self.settings)
+        plan = await svc.get_active_plan(principal)
+        if plan is None:
+            return "No active agent plan."
+        steps = await svc._load_steps(plan.id)
+        result = svc._plan_response(plan, steps)
+        lines = [
+            f"Plan: {plan.title} ({plan.id})",
+            f"Status: {plan.status}  Lane: {plan.provider_lane}",
+            f"Step {plan.current_step_index}/{plan.max_steps}",
+            "",
+            "Timeline:",
+        ]
+        for step in result.get("steps", []):
+            lines.append(
+                f"  [{step['step_index']}] {step['agent_role']} — "
+                f"{step['action_type']} — {step['status']}"
+            )
+        return "\n".join(lines)
+
+    async def _cancel_plan(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        svc = AgentPlanService(self.session, self.settings)
+        plan_id = args.get("plan_id", "").strip()
+        if not plan_id:
+            active = await svc.get_active_plan(principal)
+            if active is None:
+                return "No active plan to cancel."
+            plan_id = active.id
+        plan = await svc.cancel_plan(principal, plan_id)
+        return f"Plan {plan.id} cancelled."
+
+    async def _retry_plan_step(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        svc = AgentPlanService(self.session, self.settings)
+        active = await svc.get_active_plan(principal)
+        if active is None:
+            return "No active plan."
+        step_index = int(args.get("step_index", "0"))
+        result = await svc.retry_step(principal, active.id, step_index)
+        return f"Retry step {step_index}: plan status {result.get('status')}"
+
+    async def _provider_lane(self, _principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        svc = AgentPlanService(self.session, self.settings)
+        info = svc.provider_lane_info()
+        lines = [
+            f"Active lane: {info.get('active_lane')}",
+            f"Local active: {info.get('local_active')}",
+            f"External enabled: {info.get('external_providers_enabled')}",
+            "",
+            "Providers (configured / enabled only — no keys shown):",
+        ]
+        for p in info.get("providers", []):
+            lines.append(f"  • {p['kind']}: configured={p['configured']} enabled={p['enabled']}")
+        return "\n".join(lines)
+
+    async def _external_provider_request(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        _ = principal, args
+        if not self.settings.nova_external_providers_enabled:
+            return (
+                "External providers are disabled. "
+                "Set NOVA_EXTERNAL_PROVIDERS_ENABLED=true and enable a specific provider. "
+                "File transmission requires cloud.send_file approval."
+            )
+        return "External provider request noted — approval and feature flag required per call."
+
+    async def _propose_commit(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        message = args.get("message", "").strip() or "fix: orchestration changes"
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project(principal)
+        meta = self._last_task_meta or {}
+        paths = meta.get("applied_files") or []
+        if not paths:
+            plan_svc = AgentPlanService(self.session, self.settings)
+            plan = await plan_svc.get_active_plan(principal)
+            if plan:
+                ctx = (plan.metadata_json or {}).get("context") or {}
+                proposal = ctx.get("commit_proposal") or {}
+                paths = proposal.get("staged_paths") or []
+        if not paths:
+            return "No staged paths — apply a patch first or specify files."
+        git_svc = GitWorkflowService(self.session, self.settings)
+        result = await git_svc.propose_commit(
+            principal,
+            project_root=active.project_root,
+            commit_message=message,
+            staged_paths=paths,
+        )
+        return (
+            f"Commit proposal created.\nApproval ID: {result['approval_id']}\n"
+            f"Push: DISABLED\nApprove commit separately, then Commit Locally."
+        )
+
+    async def _create_branch(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        branch = args.get("branch_name", "").strip() or "nova/fix"
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project(principal)
+        git_svc = GitWorkflowService(self.session, self.settings)
+        result = await git_svc.propose_branch(
+            principal, project_root=active.project_root, branch_name=branch
+        )
+        return (
+            f"Branch proposal: {result['branch_name']}\n"
+            f"Approval ID: {result['approval_id']}\nPush: DISABLED"
+        )
+
+    async def _commit_changes(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        return (
+            "Use Settings → Approvals to approve a git.commit request, "
+            "then POST /api/v1/git/commit with the approval_id. Push remains blocked."
+        )
+
+    async def _task_history(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        if active is None:
+            return "No active project."
+        memory = await project_svc.get_memory(principal, active.project_root)
+        history = (memory.recent_task_history if memory else None) or []
+        if not history:
+            return "No task history for this project."
+        lines = ["Recent task history:"]
+        for entry in history[-10:]:
+            lines.append(f"  • {entry}")
+        return "\n".join(lines)
 
     async def _guard_path_access(
         self,

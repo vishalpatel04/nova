@@ -1,5 +1,6 @@
 """API route modules."""
 
+from apps.api.routes.agent_plans import router as agent_plans_router
 from apps.api.routes.approvals import router as approvals_router
 from apps.api.routes.background_tasks import router as background_tasks_router
 from apps.api.routes.chat import router as chat_router
@@ -14,6 +15,7 @@ from apps.api.routes.timeline import router as timeline_router
 from apps.api.routes.worker_ws import router as worker_ws_router
 
 __all__ = [
+    "agent_plans_router",
     "executions_router",
     "approvals_router",
     "background_tasks_router",

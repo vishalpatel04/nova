@@ -208,3 +208,42 @@ class NotificationType(StrEnum):
     VALIDATION_FAILED = "validation.failed"
     VALIDATION_RECOVERED = "validation.recovered"
     REMINDER = "reminder"
+    DRAFT_PLAN_READY = "draft_plan.ready"
+
+
+class AgentPlanStatus(StrEnum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AgentPlanStepStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+    WAITING_APPROVAL = "waiting_approval"
+
+
+class OrchestrationRole(StrEnum):
+    PLANNER = "planner"
+    INSPECTOR = "inspector"
+    CODER = "coder"
+    REVIEWER = "reviewer"
+    VALIDATOR = "validator"
+    REPORTER = "reporter"
+
+
+class ProviderLane(StrEnum):
+    LOCAL = "local"
+    EXTERNAL_RESTRICTED = "external_restricted"
+
+
+class ReviewerVerdict(StrEnum):
+    APPROVED_FOR_USER_REVIEW = "approved_for_user_review"
+    NEEDS_REVISION = "needs_revision"
+    BLOCKED = "blocked"

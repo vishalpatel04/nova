@@ -117,6 +117,8 @@ struct MacSettingsView: View {
                 .tabItem { Label("Companion", systemImage: "tray.full") }
             NavigationStack { BackgroundTasksView() }
                 .tabItem { Label("Background", systemImage: "clock.arrow.circlepath") }
+            NavigationStack { AgentOrchestrationView() }
+                .tabItem { Label("Orchestration", systemImage: "person.3.sequence") }
             NavigationStack { NotificationsView() }
                 .tabItem { Label("Notifications", systemImage: "bell") }
             NavigationStack { ApprovalQueueView() }
