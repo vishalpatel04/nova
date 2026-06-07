@@ -46,6 +46,7 @@ from nova_core.providers.stream_context import StreamCancelToken
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
 from nova_core.tools.code_runtime import CodeRuntime
+from nova_core.tools.personal_search import PersonalSearchTool, format_search_results
 from nova_core.tools.policy import BLOCKED_MESSAGE, ToolDecision, ToolPolicy
 from nova_core.tools.protected_paths import (
     PROTECTED_PATH_MESSAGE,
@@ -58,6 +59,7 @@ from nova_core.tools.provider_security import (
     is_cloud_provider,
 )
 from nova_core.tools.safe_readonly import SafeReadonlyTools
+from nova_core.tools.search_scopes import resolve_search_scope
 
 HELP_TEXT = """NOVA commands:
 - set project <path> — set active coding project
@@ -87,7 +89,10 @@ HELP_TEXT = """NOVA commands:
 - recent missions — last missions
 - list directory [path] — read-only allowlisted directory listing
 - read file <path> — read allowlisted file (max 64KB)
-- search <pattern> [path] — ripgrep-style search in allowlisted paths
+- search <pattern> — search active project
+- search <pattern> in ~/Downloads|~/Documents|~/Desktop|~/Projects — read-only folder search
+- search all approved folders for <pattern> — search Desktop, Documents, Downloads, Projects
+- search my computer for <pattern> — prompts to search approved folders
 - help — this message
 
 Patch apply requires separate approval + Apply Approved Patch action.
@@ -109,12 +114,16 @@ class ChatService:
         self._policy = ToolPolicy(self._policies)
         safe_cfg = self._policies.get("safe_filesystem", {})
         roots = safe_cfg.get("allowed_roots") if isinstance(safe_cfg, dict) else None
+        search_roots = safe_cfg.get("search_roots") if isinstance(safe_cfg, dict) else None
+        self._search_roots = search_roots
         self._safe_tools = SafeReadonlyTools(allowed_roots=roots)
+        self._personal_search = PersonalSearchTool(search_roots=search_roots)
         self._code_runtime = CodeRuntime(allowed_roots=roots)
         self._router = ProviderRouter(ProviderConfig())
         self._provider_runtime = ProviderRuntime(settings)
         self._approval_svc = ApprovalRequestService(session, settings)
         self._last_task_meta: dict[str, Any] | None = None
+        self._pending_active_project: str | None = None
 
     async def handle_message(
         self,
@@ -164,7 +173,9 @@ class ChatService:
             "capabilities": self._worker_capabilities,
             "list_directory": self._list_directory,
             "read_file": self._read_file,
-            "ripgrep_search": self._ripgrep_search,
+            "ripgrep_search": self._safe_search,
+            "safe_search": self._safe_search,
+            "search_computer_prompt": self._search_computer_prompt,
             "repo_analysis": self._repo_analysis,
             "explain_code": self._explain_code,
             "patch_plan": self._patch_plan,
@@ -240,6 +251,9 @@ class ChatService:
                 return response
             await self._maybe_audit_command(principal, intent, args, body)
             extra: dict[str, Any] = {}
+            if intent == "set_project" and self._pending_active_project:
+                extra["active_project"] = self._pending_active_project
+                self._pending_active_project = None
             if intent == "coding_task" and self._last_task_meta:
                 extra = {
                     k: self._last_task_meta.get(k)
@@ -349,7 +363,9 @@ class ChatService:
             "capabilities": self._worker_capabilities,
             "list_directory": self._list_directory,
             "read_file": self._read_file,
-            "ripgrep_search": self._ripgrep_search,
+            "ripgrep_search": self._safe_search,
+            "safe_search": self._safe_search,
+            "search_computer_prompt": self._search_computer_prompt,
             "repo_analysis": self._repo_analysis,
             "explain_code": self._explain_code,
             "patch_plan": self._patch_plan,
@@ -405,11 +421,16 @@ class ChatService:
                 )
             else:
                 await self._maybe_audit_command(principal, intent, args, body)
+                extra: dict[str, Any] = {}
+                if intent == "set_project" and self._pending_active_project:
+                    extra["active_project"] = self._pending_active_project
+                    self._pending_active_project = None
                 response = self._response(
                     body,
                     intent=intent,
                     routing=routing,
                     session_id=chat_session.id,
+                    **extra,
                 )
             async for event in self._emit_full_response(sessions, chat_session, response):
                 if cancel and cancel.cancelled:
@@ -496,6 +517,7 @@ class ChatService:
                 "session_id": response.get("session_id"),
                 "token_usage": response.get("token_usage"),
                 "routing": response.get("routing"),
+                "active_project": response.get("active_project"),
             },
         }
 
@@ -563,12 +585,29 @@ class ChatService:
         if lowered.startswith("read file "):
             return "read_file", {"path": text[10:].strip()}
 
+        if lowered.startswith("search my computer for "):
+            pattern = text[len("search my computer for ") :].strip()
+            return "search_computer_prompt", {"pattern": pattern}
+
+        if lowered.startswith("search all approved folders for "):
+            pattern = text[len("search all approved folders for ") :].strip()
+            return "safe_search", {"pattern": pattern, "scope": "all_approved"}
+
         if lowered.startswith("search "):
             remainder = text[7:].strip()
+            lowered_remainder = remainder.lower()
+            if lowered_remainder.startswith("all approved folders for "):
+                pattern = remainder[len("all approved folders for ") :].strip()
+                return "safe_search", {"pattern": pattern, "scope": "all_approved"}
+            if lowered_remainder.startswith("my computer for "):
+                pattern = remainder[len("my computer for ") :].strip()
+                return "search_computer_prompt", {"pattern": pattern}
             parts = remainder.split(" in ", maxsplit=1)
             pattern = parts[0].strip()
-            path = parts[1].strip() if len(parts) > 1 else "."
-            return "ripgrep_search", {"pattern": pattern, "path": path}
+            if len(parts) > 1:
+                path = parts[1].strip()
+                return "safe_search", {"pattern": pattern, "path": path, "scope": "path"}
+            return "safe_search", {"pattern": pattern, "scope": "active_project"}
 
         if lowered in {"repo analysis", "analyze repo", "analyse repo"}:
             return "repo_analysis", {"path": "~/Projects/nova"}
@@ -877,7 +916,20 @@ class ChatService:
         preview = content[:1200] + ("…" if len(content) > 1200 else "")
         return f"File: {output.get('path')}\nSize: {output.get('size')} bytes\n\n{preview}"
 
-    async def _ripgrep_search(
+    async def _search_computer_prompt(
+        self,
+        _principal: Principal,
+        args: dict[str, str],
+        **_kw: Any,
+    ) -> str:
+        pattern = args.get("pattern", "").strip()
+        return (
+            f"Search all approved folders: Desktop, Documents, Downloads, Projects?\n\n"
+            f'To search for "{pattern}" across those folders, say:\n'
+            f"search all approved folders for {pattern}"
+        )
+
+    async def _safe_search(
         self,
         principal: Principal,
         args: dict[str, str],
@@ -886,36 +938,100 @@ class ChatService:
         session_id: str | None = None,
         **_kw: Any,
     ) -> str:
-        path = args.get("path", ".")
-        guard = await self._guard_path_access(principal, path, routing)
-        if not guard.allowed:
-            if guard.approval_resolution is not None:
-                return await self._format_approval_message(
-                    principal, guard.approval_resolution, session_id
-                )
-            return guard.blocked_message or BLOCKED_MESSAGE
+        pattern = args.get("pattern", "").strip()
+        if not pattern:
+            return "Usage: search <pattern> [in ~/Downloads]"
+
+        scope = args.get("scope", "active_project")
         evaluation = self._policy.evaluate("ripgrep_search", category="search")
         if evaluation.decision != ToolDecision.AUTO_APPROVE:
-            await self._audit_blocked(principal, args.get("pattern", ""), reason="policy_block")
+            await self._audit_blocked(principal, pattern, reason="policy_block")
             return BLOCKED_MESSAGE
-        result = self._safe_tools.ripgrep_search(
-            args.get("pattern", ""),
-            args.get("path", "."),
-        )
-        if not result.success:
-            return await self._handle_tool_error(
+
+        if scope == "all_approved":
+            if routing is not None and is_cloud_provider(routing.provider):
+                return "Blocked: cloud providers cannot receive multi-folder search results yet."
+            result = self._personal_search.search_all_approved(pattern)
+            if not result.success:
+                return f"Blocked: {result.error}"
+            assert result.output is not None
+            return format_search_results(pattern, result.output)
+
+        if scope == "active_project":
+            project_svc = ProjectService(self.session, self.settings)
+            active = await project_svc.get_active_project_or_none(principal)
+            if active is None:
+                return "No active project. Use: set project ~/Projects/nova"
+            search_path = active.project_root
+        else:
+            search_path = args.get("path", "").strip()
+            if not search_path:
+                return "Usage: search <pattern> in ~/Downloads"
+
+        if is_protected_path(search_path):
+            await self._audit_blocked(
                 principal,
-                f"{args.get('pattern', '')} {path}".strip(),
-                result.error,
+                sanitize_path_for_log(search_path),
+                reason="protected_path_block",
             )
-        output = result.output
-        assert isinstance(output, dict)
-        matches = output.get("matches", [])
-        if not matches:
-            return f"No matches for pattern `{output.get('pattern')}`."
-        lines = [f"{m.get('path')}:{m.get('line')}: {m.get('text')}" for m in matches[:10]]
-        suffix = " (truncated)" if output.get("truncated") else ""
-        return f"Matches{suffix}:\n" + "\n".join(lines)
+            return PROTECTED_PATH_MESSAGE
+
+        if routing is not None and is_cloud_provider(routing.provider):
+            transmission = evaluate_file_transmission(routing.provider, search_path, approved=False)
+            if transmission.decision != FileTransmissionDecision.ALLOW:
+                return await self._format_approval_message(
+                    principal,
+                    cloud_file_resolution(search_path),
+                    session_id,
+                )
+
+        if scope == "active_project":
+            guard = await self._guard_path_access(principal, search_path, routing)
+            if not guard.allowed:
+                if guard.approval_resolution is not None:
+                    return await self._format_approval_message(
+                        principal, guard.approval_resolution, session_id
+                    )
+                return guard.blocked_message or BLOCKED_MESSAGE
+            legacy = self._safe_tools.ripgrep_search(pattern, search_path)
+            if not legacy.success:
+                return await self._handle_tool_error(principal, search_path, legacy.error)
+            output = legacy.output
+            assert isinstance(output, dict)
+            matches = output.get("matches", [])
+            if not matches:
+                return f'Found 0 matches for "{pattern}".'
+            grouped: dict[str, list[dict[str, Any]]] = {}
+            for match in matches:
+                path_key = str(match.get("path", ""))
+                grouped.setdefault(path_key, []).append(match)
+            formatted = format_search_results(
+                pattern,
+                {
+                    "match_count": len(matches),
+                    "by_file": {
+                        k: [{"line": m.get("line"), "text": m.get("text")} for m in v]
+                        for k, v in grouped.items()
+                    },
+                    "truncated": output.get("truncated", False),
+                },
+            )
+            return formatted
+
+        scope_check = resolve_search_scope(search_path, search_roots=self._search_roots)
+        if not scope_check.allowed:
+            await self._audit_blocked(
+                principal,
+                sanitize_path_for_log(search_path),
+                reason="search_scope_block",
+            )
+            return scope_check.reason or BLOCKED_MESSAGE
+
+        result = self._personal_search.search_scope(pattern, search_path)
+        if not result.success:
+            return f"Blocked: {result.error}"
+        assert result.output is not None
+        return format_search_results(pattern, result.output)
 
     async def _repo_analysis(
         self,
@@ -1001,6 +1117,7 @@ class ChatService:
             record = await svc.set_active_project(principal, path)
         except Exception as exc:
             return f"Blocked: {exc}"
+        self._pending_active_project = record.project_name
         tooling = ", ".join(k for k, v in (record.detected_tooling or {}).items() if v)
         return (
             f"Active project set.\n"
@@ -1619,6 +1736,7 @@ class ChatService:
             "list_directory",
             "read_file",
             "ripgrep_search",
+            "safe_search",
         }:
             return
         await record_audit_event(

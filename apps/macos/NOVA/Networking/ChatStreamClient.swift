@@ -4,7 +4,7 @@ struct ChatStreamEvent: Equatable {
     enum Kind: Equatable {
         case session(sessionId: String, streamId: String?)
         case token(String)
-        case done(intent: String, blocked: Bool, sessionId: String?)
+        case done(intent: String, blocked: Bool, sessionId: String?, activeProject: String?)
         case cancelled
         case error(String)
     }
@@ -94,7 +94,8 @@ final class ChatStreamClient: ObservableObject {
                     kind: .done(
                         intent: json["intent"] as? String ?? "general",
                         blocked: json["blocked"] as? Bool ?? false,
-                        sessionId: json["session_id"] as? String
+                        sessionId: json["session_id"] as? String,
+                        activeProject: json["active_project"] as? String
                     )
                 )
             )

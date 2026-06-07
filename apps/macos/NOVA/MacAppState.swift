@@ -255,7 +255,7 @@ final class MacAppState: ObservableObject {
             var message = chatMessages[index]
             message.content += delta
             chatMessages[index] = message
-        case .done(_, let blocked, let sessionId):
+        case .done(let intent, let blocked, let sessionId, let activeProject):
             var message = chatMessages[index]
             message.isStreaming = false
             message.blocked = blocked
@@ -264,6 +264,11 @@ final class MacAppState: ObservableObject {
             activeChatSessionId = sessionId ?? activeChatSessionId
             isChatStreaming = false
             if blocked { chatError = message.content }
+            if let activeProject {
+                activeProjectName = activeProject
+            } else if intent == "set_project" {
+                Task { await refreshActiveProject() }
+            }
             persistChatSnapshot()
         case .cancelled:
             cancelActiveChatStream()
@@ -351,7 +356,10 @@ final class MacAppState: ObservableObject {
     }
 
     func refreshActiveProject() async {
-        guard isPaired else { return }
+        guard isPaired else {
+            activeProjectName = nil
+            return
+        }
         do {
             let project = try await api.fetchActiveProject()
             activeProjectName = project.projectName

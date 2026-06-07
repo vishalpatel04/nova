@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -92,6 +93,23 @@ class ProjectService:
         await self.session.flush()
         return record
 
+    async def _clear_if_stale(self, record: ActiveProject) -> ActiveProject | None:
+        path = Path(record.project_root)
+        if path.exists() and path.is_dir():
+            return record
+        await record_audit_event(
+            self.session,
+            actor_type="system",
+            actor_id="project_service",
+            action="project.cleared_stale",
+            resource_type="active_project",
+            resource_id=record.id,
+            details={"project_root": record.project_root[:200]},
+        )
+        await self.session.delete(record)
+        await self.session.flush()
+        return None
+
     async def get_active_project(self, principal: Principal) -> ActiveProject:
         if not principal.device_id:
             raise ValidationError("Device id required")
@@ -104,7 +122,10 @@ class ProjectService:
         record = result.scalar_one_or_none()
         if record is None:
             raise NotFoundError("active_project", principal.device_id)
-        return record
+        fresh = await self._clear_if_stale(record)
+        if fresh is None:
+            raise NotFoundError("active_project", principal.device_id)
+        return fresh
 
     async def get_active_project_or_none(self, principal: Principal) -> ActiveProject | None:
         if not principal.device_id:
@@ -115,7 +136,10 @@ class ProjectService:
                 ActiveProject.user_id == principal.user_id,
             )
         )
-        return result.scalar_one_or_none()
+        record = result.scalar_one_or_none()
+        if record is None:
+            return None
+        return await self._clear_if_stale(record)
 
     async def get_memory(self, principal: Principal, project_root: str) -> ProjectMemory | None:
         if not principal.device_id:

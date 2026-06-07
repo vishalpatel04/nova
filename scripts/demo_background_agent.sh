@@ -144,6 +144,7 @@ obtain_client_token() {
 }
 
 cleanup() {
+  demo_restore_active_project
   if [[ -n "$DEMO_DIR" && -d "$DEMO_DIR" ]]; then
     case "$DEMO_DIR" in
       "$SAFE_ROOT"/bg-demo-*)
@@ -184,6 +185,10 @@ if ! obtain_client_token; then
   echo "DEMO: PARTIAL — set NOVA_DEMO_TOKEN"
   exit 0
 fi
+
+# shellcheck source=demo_project_helpers.sh
+source "$ROOT/scripts/demo_project_helpers.sh"
+demo_save_active_project
 
 step "5. Create isolated safe project"
 mkdir -p "$SAFE_ROOT"

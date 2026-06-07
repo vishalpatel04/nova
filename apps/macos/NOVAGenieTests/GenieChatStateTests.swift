@@ -31,6 +31,23 @@ final class GenieChatStateTests: XCTestCase {
         XCTAssertFalse(state.shouldShowPairing)
         XCTAssertEqual(state.compactWindowMode, .chat)
     }
+
+    func testDoneEventCarriesActiveProject() {
+        let event = ChatStreamEvent(
+            kind: .done(
+                intent: "set_project",
+                blocked: false,
+                sessionId: "sess-1",
+                activeProject: "nova"
+            )
+        )
+        if case .done(let intent, _, _, let activeProject) = event.kind {
+            XCTAssertEqual(intent, "set_project")
+            XCTAssertEqual(activeProject, "nova")
+        } else {
+            XCTFail("expected done event")
+        }
+    }
 }
 
 final class NovaProviderKeychainTests: XCTestCase {

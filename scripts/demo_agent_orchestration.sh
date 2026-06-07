@@ -132,6 +132,7 @@ authenticate_client() {
 step() { echo "==> $*"; demo_debug "$*"; }
 
 cleanup() {
+  demo_restore_active_project
   [[ -d "$DEMO_DIR" ]] && rm -rf "$DEMO_DIR"
 }
 trap cleanup EXIT
@@ -149,6 +150,10 @@ curl -sf --connect-timeout 3 --max-time 15 "$API/api/v1/health" >/dev/null || {
 }
 
 authenticate_client
+
+# shellcheck source=demo_project_helpers.sh
+source "$ROOT/scripts/demo_project_helpers.sh"
+demo_save_active_project
 
 step "Create isolated git repo"
 mkdir -p "$DEMO_DIR/tests"
