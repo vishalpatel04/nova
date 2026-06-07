@@ -12,8 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.services.approvals import ApprovalRequestService
+from apps.api.services.coding_tasks import CodingTaskService
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
+from apps.api.services.projects import ProjectService
 from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
 from nova_core.auth.principal import Principal
 from nova_core.capabilities.model import (
@@ -30,6 +32,8 @@ from nova_core.capabilities.resolver import (
 from nova_core.devices.availability import get_worker_availability
 from nova_core.models.enums import MissionStatus
 from nova_core.models.orm import Mission
+from nova_core.project.inspect import format_inspection, inspect_repo
+from nova_core.project.validation import pick_validation_command, run_validation_command
 from nova_core.providers.router import ProviderConfig, ProviderRouter
 from nova_core.providers.runtime import InferenceRequest, ProviderRuntime, token_usage_dict
 from nova_core.providers.stream_context import StreamCancelToken
@@ -49,19 +53,23 @@ from nova_core.tools.provider_security import (
 )
 from nova_core.tools.safe_readonly import SafeReadonlyTools
 
-HELP_TEXT = """NOVA Phase 3A commands:
+HELP_TEXT = """NOVA commands:
+- set project <path> — set active coding project
+- current project — show active project
+- inspect repo — inspect active project
+- summarize repo — short project summary
+- run validation — run safe test/lint command
+- fix failing tests — inspect, validate, propose patch (approval required)
 - system status — control plane and worker summary
 - connected devices — paired devices list
 - worker status — worker online/stale/offline counts
 - recent missions — last missions
-- create system status mission — queue a system_status mission
-- list worker capabilities — worker capability report
 - list directory [path] — read-only allowlisted directory listing
 - read file <path> — read allowlisted file (max 64KB)
 - search <pattern> [path] — ripgrep-style search in allowlisted paths
 - help — this message
 
-Unsafe write/shell/browser/email/automation requests require approval.
+Patch apply requires separate approval + Apply Approved Patch action.
 Protected paths always blocked."""
 
 
@@ -85,6 +93,7 @@ class ChatService:
         self._router = ProviderRouter(ProviderConfig())
         self._provider_runtime = ProviderRuntime(settings)
         self._approval_svc = ApprovalRequestService(session, settings)
+        self._last_task_meta: dict[str, Any] | None = None
 
     async def handle_message(
         self,
@@ -138,6 +147,12 @@ class ChatService:
             "repo_analysis": self._repo_analysis,
             "explain_code": self._explain_code,
             "patch_plan": self._patch_plan,
+            "set_project": self._set_project,
+            "current_project": self._current_project,
+            "inspect_repo": self._inspect_repo,
+            "summarize_repo": self._summarize_repo,
+            "run_validation": self._run_validation,
+            "coding_task": self._coding_task,
         }.get(intent)
 
         if handler:
@@ -156,6 +171,20 @@ class ChatService:
                 return response
             if body.startswith("I can do this after approval."):
                 approval_id = self._extract_approval_id(body)
+                task_extra: dict[str, Any] = {}
+                if self._last_task_meta:
+                    task_extra = {
+                        k: self._last_task_meta.get(k)
+                        for k in (
+                            "task_id",
+                            "timeline",
+                            "unified_diff",
+                            "patch_preview",
+                            "active_project",
+                        )
+                        if self._last_task_meta.get(k) is not None
+                    }
+                    self._last_task_meta = None
                 response = self._response(
                     body,
                     intent="approval_required",
@@ -163,16 +192,33 @@ class ChatService:
                     blocked=False,
                     session_id=chat_session.id,
                     approval_required=True,
-                    approval_id=approval_id,
+                    approval_id=approval_id or task_extra.pop("approval_id", None),
+                    **task_extra,
                 )
                 await self._persist_assistant(sessions, chat_session, response)
                 return response
             await self._maybe_audit_command(principal, intent, args, body)
+            extra: dict[str, Any] = {}
+            if intent == "coding_task" and self._last_task_meta:
+                extra = {
+                    k: self._last_task_meta.get(k)
+                    for k in (
+                        "task_id",
+                        "timeline",
+                        "approval_id",
+                        "unified_diff",
+                        "patch_preview",
+                        "active_project",
+                    )
+                    if self._last_task_meta.get(k) is not None
+                }
+                self._last_task_meta = None
             response = self._response(
                 body,
                 intent=intent,
                 routing=routing,
                 session_id=chat_session.id,
+                **extra,
             )
             await self._persist_assistant(sessions, chat_session, response)
             return response
@@ -266,6 +312,12 @@ class ChatService:
             "repo_analysis": self._repo_analysis,
             "explain_code": self._explain_code,
             "patch_plan": self._patch_plan,
+            "set_project": self._set_project,
+            "current_project": self._current_project,
+            "inspect_repo": self._inspect_repo,
+            "summarize_repo": self._summarize_repo,
+            "run_validation": self._run_validation,
+            "coding_task": self._coding_task,
         }.get(intent)
 
         if handler:
@@ -466,7 +518,42 @@ class ChatService:
         if lowered.startswith("generate patch "):
             return "patch_plan", {"instruction": text[len("generate patch ") :].strip()}
 
-        if re.search(r"\b(run|execute|delete|write|send email|open browser|n8n)\b", lowered):
+        if lowered.startswith("set project "):
+            return "set_project", {"path": text[len("set project ") :].strip()}
+
+        if lowered in {"current project", "show project", "active project"}:
+            return "current_project", {}
+
+        if lowered in {"inspect repo", "inspect repository"}:
+            return "inspect_repo", {}
+
+        if lowered in {"summarize repo", "summarize repository", "repo summary"}:
+            return "summarize_repo", {}
+
+        if lowered in {"run validation", "validate project", "run tests", "run validation tests"}:
+            return "run_validation", {}
+
+        coding_triggers = (
+            "fix failing test",
+            "fix failing tests",
+            "propose patch",
+            "analyze this repo",
+            "explain this error",
+            "explain error",
+        )
+        if any(lowered.startswith(t) or t in lowered for t in coding_triggers):
+            return "coding_task", {"request": text}
+
+        if re.search(
+            r"\b(execute|delete|write file|send email|open browser|n8n)\b",
+            lowered,
+        ):
+            return "blocked", {}
+
+        if re.search(r"\brun\b", lowered) and lowered not in {
+            "run system status",
+            "run system_status",
+        }:
             return "blocked", {}
 
         return "general", {}
@@ -724,6 +811,134 @@ class ChatService:
         )
         return await self._format_approval_message(principal, resolution, session_id)
 
+    async def _set_project(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        path = args.get("path", "").strip()
+        if not path:
+            return "Usage: set project ~/Projects/nova"
+        svc = ProjectService(self.session, self.settings)
+        try:
+            record = await svc.set_active_project(principal, path)
+        except Exception as exc:
+            return f"Blocked: {exc}"
+        tooling = ", ".join(k for k, v in (record.detected_tooling or {}).items() if v)
+        return (
+            f"Active project set.\n"
+            f"Name: {record.project_name}\n"
+            f"Root: {record.project_root}\n"
+            f"Branch: {record.current_branch or '(unknown)'}\n"
+            f"Tooling: {tooling or 'none'}"
+        )
+
+    async def _current_project(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = ProjectService(self.session, self.settings)
+        try:
+            record = await svc.get_active_project(principal)
+        except Exception:
+            return "No active project. Use: set project ~/Projects/nova"
+        return (
+            f"Active project: {record.project_name}\n"
+            f"Root: {record.project_root}\n"
+            f"Branch: {record.current_branch or '(unknown)'}\n"
+            f"Last opened: {record.last_opened_at.isoformat()}"
+        )
+
+    async def _inspect_repo(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        svc = ProjectService(self.session, self.settings)
+        try:
+            record = await svc.get_active_project(principal)
+        except Exception:
+            return "No active project. Use: set project ~/Projects/nova"
+        from pathlib import Path
+
+        inspection = await inspect_repo(Path(record.project_root))
+        record.current_branch = inspection.current_branch
+        return format_inspection(inspection)
+
+    async def _summarize_repo(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        svc = ProjectService(self.session, self.settings)
+        try:
+            record = await svc.get_active_project(principal)
+        except Exception:
+            return "No active project. Use: set project ~/Projects/nova"
+        from pathlib import Path
+
+        inspection = await inspect_repo(Path(record.project_root))
+        cmds = ", ".join(f"{k}={v}" for k, v in inspection.detected_commands.items()) or "none"
+        return (
+            f"{inspection.project_name} @ {inspection.current_branch}\n"
+            f"Root: {inspection.project_root}\n"
+            f"Validation: {cmds}\n"
+            f"Status: {inspection.git_status[:300]}"
+        )
+
+    async def _run_validation(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
+        svc = ProjectService(self.session, self.settings)
+        try:
+            record = await svc.get_active_project(principal)
+        except Exception:
+            return "No active project. Use: set project ~/Projects/nova"
+        from pathlib import Path
+
+        root = Path(record.project_root)
+        cmd = pick_validation_command(root) or "make test"
+        safe_cfg = self._policies.get("safe_filesystem")
+        allowed_roots = safe_cfg.get("allowed_roots") if isinstance(safe_cfg, dict) else None
+        result = await run_validation_command(root, cmd, allowed_roots=allowed_roots)
+        await svc.upsert_memory(
+            principal,
+            record.project_root,
+            last_validation_command=cmd,
+            last_validation_result={
+                "exit_code": result.exit_code,
+                "stdout": result.stdout_excerpt[:2000],
+                "stderr": result.stderr_excerpt[:2000],
+            },
+        )
+        if result.blocked:
+            return f"Blocked: {result.block_reason}"
+        return (
+            f"Validation: {cmd}\n"
+            f"Exit code: {result.exit_code}\n\n"
+            f"stdout:\n{result.stdout_excerpt[:1500]}\n\n"
+            f"stderr:\n{result.stderr_excerpt[:800]}"
+        )
+
+    async def _coding_task(
+        self,
+        principal: Principal,
+        args: dict[str, str],
+        *,
+        session_id: str | None = None,
+        **_kw: Any,
+    ) -> str:
+        request_text = args.get("request", "").strip()
+        svc = CodingTaskService(self.session, self.settings)
+        try:
+            result = await svc.run_workflow(principal, request_text)
+        except Exception as exc:
+            return f"Blocked: {exc}"
+        self._last_task_meta = {
+            "task_id": result.get("task_id"),
+            "timeline": result.get("timeline"),
+            "approval_id": result.get("approval_id"),
+            "unified_diff": result.get("unified_diff"),
+            "patch_preview": result.get("patch_preview"),
+        }
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        if active:
+            self._last_task_meta["active_project"] = active.project_name
+        if result.get("approval_id"):
+            return (
+                "I can do this after approval.\n\n"
+                f"{result.get('message', '')}\n\n"
+                f"Approval ID: {result['approval_id']}\n"
+                "Open Settings → Approvals to approve, then Apply Approved Patch."
+            )
+        return str(result.get("message") or result.get("summary") or "Coding task finished.")
+
     async def _guard_path_access(
         self,
         principal: Principal,
@@ -964,6 +1179,11 @@ class ChatService:
         approval_required: bool = False,
         approval_id: str | None = None,
         risk_level: str | None = None,
+        task_id: str | None = None,
+        timeline: list[dict[str, Any]] | None = None,
+        unified_diff: str | None = None,
+        patch_preview: str | None = None,
+        active_project: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
@@ -974,6 +1194,16 @@ class ChatService:
             "approval_id": approval_id,
             "risk_level": risk_level,
         }
+        if task_id:
+            payload["task_id"] = task_id
+        if timeline:
+            payload["timeline"] = timeline
+        if unified_diff:
+            payload["unified_diff"] = unified_diff
+        if patch_preview:
+            payload["patch_preview"] = patch_preview
+        if active_project:
+            payload["active_project"] = active_project
         if token_usage is not None:
             payload["token_usage"] = token_usage
         if routing is not None:

@@ -213,6 +213,31 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacShellExecutionResult.self, from: data)
     }
 
+    func applyApprovedPatch(approvalId: String) async throws -> MacPatchExecutionResult {
+        struct Body: Encodable { let approvalId: String }
+        let data = try await request(
+            path: "/api/v1/executions/apply-approved-patch",
+            method: "POST",
+            body: Body(approvalId: approvalId)
+        )
+        return try decoder.decode(MacPatchExecutionResult.self, from: data)
+    }
+
+    func setActiveProject(path: String) async throws -> MacActiveProject {
+        struct Body: Encodable { let projectRoot: String }
+        let data = try await request(
+            path: "/api/v1/projects/active",
+            method: "POST",
+            body: Body(projectRoot: path)
+        )
+        return try decoder.decode(MacActiveProject.self, from: data)
+    }
+
+    func fetchActiveProject() async throws -> MacActiveProject {
+        let data = try await request(path: "/api/v1/projects/active")
+        return try decoder.decode(MacActiveProject.self, from: data)
+    }
+
     func approveRequest(id: String) async throws -> MacApprovalRequest {
         let data = try await request(path: "/api/v1/approvals/\(id)/approve", method: "POST")
         return try decoder.decode(MacApprovalRequest.self, from: data)
@@ -323,6 +348,27 @@ struct MacChatResponse: Decodable {
     let approvalRequired: Bool?
     let approvalId: String?
     let riskLevel: String?
+    let taskId: String?
+    let timeline: [MacTaskTimelineEntry]?
+    let activeProject: String?
+    let unifiedDiff: String?
+}
+
+struct MacTaskTimelineEntry: Decodable, Identifiable {
+    var id: String { stage + (at ?? "") }
+    let stage: String
+    let message: String
+    let at: String?
+}
+
+struct MacActiveProject: Decodable {
+    let projectRoot: String
+    let projectName: String
+    let currentBranch: String?
+    let detectedTooling: [String: Bool]?
+    let lastOpenedAt: Date
+    let userId: String
+    let deviceId: String
 }
 
 struct MacRuntimeStatus: Decodable {
@@ -416,6 +462,19 @@ struct MacShellExecutionResult: Decodable {
     let stdoutExcerpt: String?
     let stderrExcerpt: String?
     let exitCode: Int?
+    let startedAt: Date?
+    let finishedAt: Date?
+}
+
+struct MacPatchExecutionResult: Decodable {
+    let executionId: String
+    let approvalId: String
+    let capability: String
+    let projectRoot: String
+    let patchPreview: String
+    let status: String
+    let appliedFiles: [String]?
+    let errorMessage: String?
     let startedAt: Date?
     let finishedAt: Date?
 }

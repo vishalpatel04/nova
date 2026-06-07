@@ -535,3 +535,87 @@ class ShellExecution(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ActiveProject(Base):
+    __tablename__ = "active_projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_root: Mapped[str] = mapped_column(String(1024), nullable=False)
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    current_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_tooling: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    last_opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("device_id", name="uq_active_projects_device_id"),)
+
+
+class ProjectMemory(Base):
+    __tablename__ = "project_memory"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_root: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    last_validation_command: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    last_validation_result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    last_patch_proposal: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    last_task_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recent_task_history: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_id", "project_root", name="uq_project_memory_scope"),
+    )
+
+
+class PatchExecution(Base):
+    __tablename__ = "patch_executions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    approval_id: Mapped[str] = mapped_column(
+        ForeignKey("approval_requests.id"), nullable=False, index=True, unique=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    capability: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    project_root: Mapped[str] = mapped_column(String(1024), nullable=False)
+    patch_preview: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    applied_files: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CodingTask(Base):
+    __tablename__ = "coding_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_root: Mapped[str] = mapped_column(String(1024), nullable=False)
+    stage: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_request: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    patch_execution_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeline: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

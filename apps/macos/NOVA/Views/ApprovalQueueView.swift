@@ -7,6 +7,7 @@ struct ApprovalQueueView: View {
     @State private var loadError: String?
     @State private var actionMessage: String?
     @State private var lastExecution: MacShellExecutionResult?
+    @State private var lastPatch: MacPatchExecutionResult?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +17,9 @@ struct ApprovalQueueView: View {
             }
             if let actionMessage {
                 Text(actionMessage).font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            }
+            if let lastPatch {
+                patchPanel(lastPatch)
             }
             if let lastExecution {
                 executionPanel(lastExecution)
@@ -31,7 +35,11 @@ struct ApprovalQueueView: View {
                 if !approvedItems.isEmpty {
                     Section("Approved — ready to execute") {
                         ForEach(approvedItems) { item in
-                            approvalRow(item, showExecute: item.capability == "shell.execute")
+                            approvalRow(
+                                item,
+                                showExecute: item.capability == "shell.execute",
+                                showApplyPatch: item.capability == "code.patch" || item.capability == "file.write"
+                            )
                         }
                     }
                 }
@@ -58,7 +66,12 @@ struct ApprovalQueueView: View {
     }
 
     @ViewBuilder
-    private func approvalRow(_ item: MacApprovalRequest, showApprove: Bool = false, showExecute: Bool = false) -> some View {
+    private func approvalRow(
+        _ item: MacApprovalRequest,
+        showApprove: Bool = false,
+        showExecute: Bool = false,
+        showApplyPatch: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(item.actionSummary)
@@ -90,10 +103,52 @@ struct ApprovalQueueView: View {
                     Button("Execute Approved Action") { Task { await execute(item.id) } }
                         .buttonStyle(.borderedProminent)
                 }
+                if showApplyPatch {
+                    Button("Apply Approved Patch") { Task { await applyPatch(item.id) } }
+                        .buttonStyle(.borderedProminent)
+                }
             }
             .font(.caption)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func patchPanel(_ result: MacPatchExecutionResult) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Patch result")
+                    .font(.caption.weight(.semibold))
+                StatusBadge(status: result.status)
+            }
+            Text(result.patchPreview)
+                .font(.caption.monospaced())
+                .lineLimit(8)
+            if let files = result.appliedFiles, !files.isEmpty {
+                Text("Applied: \(files.joined(separator: ", "))")
+                    .font(.caption2)
+            }
+            if let err = result.errorMessage, !err.isEmpty {
+                Text(err)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal)
+    }
+
+    private func applyPatch(_ id: String) async {
+        do {
+            let result = try await appState.api.applyApprovedPatch(approvalId: id)
+            lastPatch = result
+            actionMessage = "Patch apply finished: \(result.status)"
+            await refresh()
+        } catch {
+            loadError = error.localizedDescription
+        }
     }
 
     @ViewBuilder

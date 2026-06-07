@@ -254,6 +254,10 @@ def _build_argv(parts: list[str], *, allowed_roots: list[str] | None) -> list[st
             if len(args) > 1:
                 raise ValueError("git status accepts no extra arguments")
             return ["git", "status"]
+        if sub == "branch" and len(args) >= 2 and args[1] == "--show-current":
+            if len(args) > 2:
+                raise ValueError("git branch --show-current accepts no extra arguments")
+            return ["git", "branch", "--show-current"]
         if sub == "diff" and len(args) >= 2 and args[1] == "--stat":
             if len(args) > 2:
                 raise ValueError("git diff --stat accepts no path arguments in Phase 3F")

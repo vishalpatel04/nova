@@ -39,8 +39,9 @@ async def execute_safe_command(
     validation: ShellValidationResult,
     *,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    cwd: Path | None = None,
 ) -> ShellExecutionResult:
-    if not validation.allowed or validation.argv is None or validation.cwd is None:
+    if not validation.allowed or validation.argv is None:
         return ShellExecutionResult(
             exit_code=-1,
             stdout_excerpt="",
@@ -50,9 +51,19 @@ async def execute_safe_command(
             block_reason=validation.reason,
         )
 
+    workdir = cwd or validation.cwd
+    if workdir is None:
+        return ShellExecutionResult(
+            exit_code=-1,
+            stdout_excerpt="",
+            stderr_excerpt="Missing working directory",
+            timed_out=False,
+            blocked=True,
+        )
+
     proc = await asyncio.create_subprocess_exec(
         *validation.argv,
-        cwd=str(validation.cwd),
+        cwd=str(workdir),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=_minimal_env(),

@@ -53,6 +53,14 @@ struct GenieChatView: View {
             Text(appState.providerBadge)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let project = appState.activeProjectName {
+                Text("📁 \(project)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            if !appState.taskTimeline.isEmpty {
+                TaskTimelineStrip(entries: appState.taskTimeline)
+            }
             if let hint = appState.localModelStatusMessage, !appState.providerHealthy {
                 Text(hint)
                     .font(.caption2)
@@ -224,6 +232,26 @@ struct GenieChatView: View {
         } catch {
             appState.chatError = error.localizedDescription
         }
+    }
+}
+
+private struct TaskTimelineStrip: View {
+    let entries: [MacTaskTimelineEntry]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(entries) { entry in
+                    Text(entry.stage.replacingOccurrences(of: "_", with: " "))
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .frame(maxWidth: 180)
     }
 }
 
