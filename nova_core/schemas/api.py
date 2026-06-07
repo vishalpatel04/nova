@@ -227,6 +227,57 @@ class ShellExecutionResponse(BaseModel):
     finished_at: datetime | None = None
 
 
+class ApplyApprovedPatchRequest(BaseModel):
+    approval_id: str = Field(min_length=36, max_length=36)
+
+
+class PatchExecutionResponse(BaseModel):
+    execution_id: str
+    approval_id: str
+    capability: str
+    project_root: str
+    patch_preview: str
+    status: str
+    applied_files: list[str] = Field(default_factory=list)
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class SetActiveProjectRequest(BaseModel):
+    project_root: str = Field(min_length=1, max_length=1024)
+
+
+class ActiveProjectResponse(BaseModel):
+    project_root: str
+    project_name: str
+    current_branch: str | None = None
+    detected_tooling: dict[str, Any] = Field(default_factory=dict)
+    last_opened_at: datetime
+    user_id: str
+    device_id: str
+
+
+class RunValidationResponse(BaseModel):
+    command: str
+    exit_code: int
+    stdout_excerpt: str
+    stderr_excerpt: str
+    blocked: bool = False
+    block_reason: str | None = None
+
+
+class CodingTaskResponse(BaseModel):
+    task_id: str
+    stage: str
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str | None = None
+    approval_id: str | None = None
+    message: str | None = None
+    patch_preview: str | None = None
+    unified_diff: str | None = None
+
+
 class ApprovalActionableListResponse(BaseModel):
     pending: list[ApprovalRequestResponse] = Field(default_factory=list)
     approved: list[ApprovalRequestResponse] = Field(default_factory=list)

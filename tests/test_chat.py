@@ -18,7 +18,8 @@ async def test_chat_help_command(auth_client: AsyncClient, paired_client_token) 
     resp = await auth_client.post("/api/v1/chat", json={"message": "help"})
     assert resp.status_code == 200
     data = resp.json()
-    assert "Phase 3A commands" in data["response"]
+    assert "NOVA commands" in data["response"]
+    assert "set project" in data["response"]
     assert data["intent"] == "help"
     assert data["blocked"] is False
 

@@ -158,3 +158,15 @@ class ExecutionStatus(StrEnum):
     FAILED = "failed"
     TIMED_OUT = "timed_out"
     BLOCKED = "blocked"
+
+
+class CodingTaskStage(StrEnum):
+    INSPECTING = "inspecting"
+    RUNNING_TESTS = "running_tests"
+    ANALYZING = "analyzing"
+    PATCH_PROPOSED = "patch_proposed"
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPLYING_PATCH = "applying_patch"
+    RERUNNING_VALIDATION = "rerunning_validation"
+    COMPLETED = "completed"
+    FAILED = "failed"

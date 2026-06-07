@@ -29,6 +29,8 @@ final class MacAppState: ObservableObject {
     @Published var providerModeLabel = "local"
     @Published var providerBadge = "local"
     @Published var localModelStatusMessage: String?
+    @Published var activeProjectName: String?
+    @Published var taskTimeline: [MacTaskTimelineEntry] = []
 
     static let welcomeText = """
     Local model ready. Ask naturally or try a quick suggestion below.
@@ -119,7 +121,7 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
         menuBarCoordinator.initialize(appState: self)
         Task { await restoreSessionFromBackend() }
-        Task { await refreshRuntimeStatus() }
+        Task { await refreshRuntimeStatus(); await refreshActiveProject() }
     }
 
     func bootstrapAuthFromKeychain() {
@@ -274,6 +276,12 @@ final class MacAppState: ObservableObject {
             }
             persistChatSnapshot()
             if response.blocked { chatError = response.response }
+            if let timeline = response.timeline {
+                taskTimeline = timeline
+            }
+            if let project = response.activeProject {
+                activeProjectName = project
+            }
         } catch {
             chatError = error.localizedDescription
             chatMessages.append(ChatMessage(role: .error, content: error.localizedDescription))
@@ -323,6 +331,16 @@ final class MacAppState: ObservableObject {
     func persistChatSnapshot() {
         chatStore.save(messages: chatMessages, sessionId: activeChatSessionId)
         userDefaults.set(chatDraft, forKey: "nova_chat_draft")
+    }
+
+    func refreshActiveProject() async {
+        guard isPaired else { return }
+        do {
+            let project = try await api.fetchActiveProject()
+            activeProjectName = project.projectName
+        } catch {
+            activeProjectName = nil
+        }
     }
 
     func refreshRuntimeStatus() async {

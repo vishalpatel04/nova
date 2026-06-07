@@ -6,6 +6,7 @@ from apps.api.routes.core import router as core_router
 from apps.api.routes.executions import router as executions_router
 from apps.api.routes.pairing import devices_router
 from apps.api.routes.pairing import router as pairing_router
+from apps.api.routes.projects import router as projects_router
 from apps.api.routes.runtime import router as runtime_router
 from apps.api.routes.scheduler import router as scheduler_router
 from apps.api.routes.timeline import router as timeline_router
@@ -19,6 +20,7 @@ __all__ = [
     "pairing_router",
     "runtime_router",
     "scheduler_router",
+    "projects_router",
     "devices_router",
     "timeline_router",
     "worker_ws_router",
