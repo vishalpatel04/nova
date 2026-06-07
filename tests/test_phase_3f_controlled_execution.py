@@ -7,9 +7,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import nova_core.shell.executor as shell_executor
 from nova_core.models.orm import ApprovalRequest, AuditEvent, ShellExecution
 from nova_core.shell.safe_command import sanitize_output_excerpt, validate_safe_shell_command
 
@@ -61,12 +62,17 @@ async def test_chat_rm_hard_blocked_no_approval(
 ) -> None:
     _device_id, token = paired_client_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
+    before = (
+        await db_session.execute(select(func.count()).select_from(ApprovalRequest))
+    ).scalar_one()
     resp = await auth_client.post("/api/v1/chat", json={"message": "run shell rm -rf /"})
     data = resp.json()
     assert data["blocked"] is True
     assert data.get("approval_required") is not True
-    pending = await db_session.execute(select(ApprovalRequest))
-    assert pending.scalars().all() == []
+    after = (
+        await db_session.execute(select(func.count()).select_from(ApprovalRequest))
+    ).scalar_one()
+    assert after == before
 
 
 async def _shell_approval_flow(
@@ -252,6 +258,53 @@ def test_stdout_stderr_excerpt_bounded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_timeout_kills_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    class FakeProc:
+        pid = 4242
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b""
+
+        def kill(self) -> None:
+            seen["kill"] = True
+
+        async def wait(self) -> int:
+            seen["wait"] = True
+            return -1
+
+    async def fake_create_subprocess_exec(*args, **kwargs):  # type: ignore[no-untyped-def]
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return FakeProc()
+
+    async def fake_wait_for(awaitable, timeout):  # type: ignore[no-untyped-def]
+        _ = timeout
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise TimeoutError
+
+    def fake_killpg(pid: int, sig: int) -> None:
+        seen["killpg"] = (pid, sig)
+
+    monkeypatch.setattr(
+        shell_executor.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    monkeypatch.setattr(shell_executor.asyncio, "wait_for", fake_wait_for)
+    monkeypatch.setattr(shell_executor.os, "killpg", fake_killpg)
+
+    result = await shell_executor.execute_safe_command(
+        validate_safe_shell_command("pwd"),
+        timeout_seconds=1,
+    )
+    assert result.timed_out is True
+    assert seen["kwargs"]["start_new_session"] is True
+    assert seen["killpg"] == (4242, shell_executor.signal.SIGKILL)
+    assert "wait" in seen
+
+
+@pytest.mark.asyncio
 async def test_concurrent_execution_reuse_blocked(
     auth_client: AsyncClient, paired_client_token, db_session: AsyncSession
 ) -> None:
@@ -294,7 +347,7 @@ async def test_execution_record_persisted(
     )
     rows = (await db_session.execute(select(ShellExecution))).scalars().all()
     assert len(rows) >= 1
-    assert rows[0].approval_id == approval_id
+    assert any(row.approval_id == approval_id for row in rows)
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,7 @@ async def execute_safe_command(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=_minimal_env(),
+        start_new_session=True,
     )
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -62,7 +64,10 @@ async def execute_safe_command(
             timeout=timeout_seconds,
         )
     except TimeoutError:
-        proc.kill()
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            proc.kill()
         await proc.wait()
         return ShellExecutionResult(
             exit_code=-1,
