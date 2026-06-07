@@ -22,6 +22,33 @@ struct MenuBarRootView: View {
 
             Divider()
 
+            if appState.isPaired {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(appState.schedulerActive ? Color.green : Color.gray)
+                        .frame(width: 6, height: 6)
+                    Text("Scheduler")
+                        .font(.caption2)
+                    Text("tasks \(appState.activeTasksCount)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    if appState.failedTasksCount > 0 {
+                        Text("failed \(appState.failedTasksCount)")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    if appState.unreadNotificationsCount > 0 {
+                        Text("• \(appState.unreadNotificationsCount) unread")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .task { await appState.refreshBackgroundStatus() }
+                Divider()
+            }
+
             MenuBarView()
         }
         .onAppear {

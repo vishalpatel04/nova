@@ -31,6 +31,10 @@ final class MacAppState: ObservableObject {
     @Published var localModelStatusMessage: String?
     @Published var activeProjectName: String?
     @Published var taskTimeline: [MacTaskTimelineEntry] = []
+    @Published var schedulerActive = false
+    @Published var activeTasksCount = 0
+    @Published var failedTasksCount = 0
+    @Published var unreadNotificationsCount = 0
 
     static let welcomeText = """
     Local model ready. Ask naturally or try a quick suggestion below.
@@ -121,7 +125,20 @@ final class MacAppState: ObservableObject {
         bootstrapAuthFromKeychain()
         menuBarCoordinator.initialize(appState: self)
         Task { await restoreSessionFromBackend() }
-        Task { await refreshRuntimeStatus(); await refreshActiveProject() }
+        Task { await refreshRuntimeStatus(); await refreshActiveProject(); await refreshBackgroundStatus() }
+    }
+
+    func refreshBackgroundStatus() async {
+        guard isPaired else { return }
+        do {
+            let status = try await api.fetchBackgroundSchedulerStatus()
+            schedulerActive = status.active
+            activeTasksCount = status.activeTasks
+            failedTasksCount = status.failedTasks
+            unreadNotificationsCount = status.unreadNotifications
+        } catch {
+            schedulerActive = false
+        }
     }
 
     func bootstrapAuthFromKeychain() {

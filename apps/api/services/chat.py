@@ -12,12 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.services.approvals import ApprovalRequestService
+from apps.api.services.background_scheduler import BackgroundSchedulerService
+from apps.api.services.background_tasks import BackgroundTaskService
 from apps.api.services.coding_tasks import CodingTaskService
 from apps.api.services.devices import DeviceService
 from apps.api.services.missions import MissionService
+from apps.api.services.notifications import NotificationService
 from apps.api.services.projects import ProjectService
 from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
 from nova_core.auth.principal import Principal
+from nova_core.background.schedules import daily_cron_at
 from nova_core.capabilities.model import (
     APPROVAL_REQUIRED_CAPABILITIES,
     PERMANENTLY_BLOCKED_CAPABILITIES,
@@ -30,7 +34,7 @@ from nova_core.capabilities.resolver import (
     resolve_chat_message,
 )
 from nova_core.devices.availability import get_worker_availability
-from nova_core.models.enums import MissionStatus
+from nova_core.models.enums import BackgroundScheduleKind, BackgroundTaskType, MissionStatus
 from nova_core.models.orm import Mission
 from nova_core.project.inspect import format_inspection, inspect_repo
 from nova_core.project.validation import pick_validation_command, run_validation_command
@@ -60,6 +64,14 @@ HELP_TEXT = """NOVA commands:
 - summarize repo — short project summary
 - run validation — run safe test/lint command
 - fix failing tests — inspect, validate, propose patch (approval required)
+- background tasks — list scheduled background tasks
+- create daily repo check at 9am — schedule daily health check
+- create repo validation every 6 hours — schedule validation
+- pause task <id> / resume task <id> / cancel task <id>
+- run task <id> now — trigger immediate safe run
+- notifications — show notification inbox
+- show failed background tasks — list failed tasks
+- summarize latest task run — last run summary
 - system status — control plane and worker summary
 - connected devices — paired devices list
 - worker status — worker online/stale/offline counts
@@ -70,7 +82,7 @@ HELP_TEXT = """NOVA commands:
 - help — this message
 
 Patch apply requires separate approval + Apply Approved Patch action.
-Protected paths always blocked."""
+Background tasks never auto-apply patches. Protected paths always blocked."""
 
 
 @dataclass(frozen=True)
@@ -153,6 +165,15 @@ class ChatService:
             "summarize_repo": self._summarize_repo,
             "run_validation": self._run_validation,
             "coding_task": self._coding_task,
+            "background_tasks": self._background_tasks,
+            "create_background_task": self._create_background_task,
+            "pause_background_task": self._pause_background_task,
+            "resume_background_task": self._resume_background_task,
+            "cancel_background_task": self._cancel_background_task,
+            "run_background_task": self._run_background_task,
+            "notifications": self._notifications_list,
+            "failed_background_tasks": self._failed_background_tasks,
+            "summarize_latest_run": self._summarize_latest_run,
         }.get(intent)
 
         if handler:
@@ -318,6 +339,15 @@ class ChatService:
             "summarize_repo": self._summarize_repo,
             "run_validation": self._run_validation,
             "coding_task": self._coding_task,
+            "background_tasks": self._background_tasks,
+            "create_background_task": self._create_background_task,
+            "pause_background_task": self._pause_background_task,
+            "resume_background_task": self._resume_background_task,
+            "cancel_background_task": self._cancel_background_task,
+            "run_background_task": self._run_background_task,
+            "notifications": self._notifications_list,
+            "failed_background_tasks": self._failed_background_tasks,
+            "summarize_latest_run": self._summarize_latest_run,
         }.get(intent)
 
         if handler:
@@ -532,6 +562,68 @@ class ChatService:
 
         if lowered in {"run validation", "validate project", "run tests", "run validation tests"}:
             return "run_validation", {}
+
+        if lowered in {"background tasks", "list background tasks", "scheduled tasks"}:
+            return "background_tasks", {}
+
+        if lowered in {"notifications", "show notifications", "inbox"}:
+            return "notifications", {}
+
+        if lowered in {"show failed background tasks", "failed background tasks", "failed tasks"}:
+            return "failed_background_tasks", {}
+
+        if lowered in {
+            "summarize latest task run",
+            "latest task run",
+            "summarize task run",
+        }:
+            return "summarize_latest_run", {}
+
+        daily_match = re.match(
+            r"create daily repo check at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+            lowered,
+        )
+        if daily_match:
+            hour = int(daily_match.group(1))
+            minute = int(daily_match.group(2) or "0")
+            meridiem = daily_match.group(3)
+            if meridiem == "pm" and hour < 12:
+                hour += 12
+            if meridiem == "am" and hour == 12:
+                hour = 0
+            return "create_background_task", {
+                "schedule_kind": BackgroundScheduleKind.CRON.value,
+                "schedule_expression": daily_cron_at(hour, minute),
+                "task_type": BackgroundTaskType.REPO_HEALTH_CHECK.value,
+                "title": f"Daily repo check at {hour:02d}:{minute:02d}",
+            }
+
+        interval_match = re.match(
+            r"create repo validation every (\d+)\s*(hours?|h|minutes?|m|days?|d)",
+            lowered,
+        )
+        if interval_match:
+            amount = interval_match.group(1)
+            unit_raw = interval_match.group(2)[0].lower()
+            unit = {"h": "h", "m": "m", "d": "d"}.get(unit_raw, "h")
+            return "create_background_task", {
+                "schedule_kind": BackgroundScheduleKind.INTERVAL.value,
+                "schedule_expression": f"{amount}{unit}",
+                "task_type": BackgroundTaskType.REPO_RUN_VALIDATION.value,
+                "title": f"Repo validation every {amount}{unit}",
+            }
+
+        for verb, intent in (
+            ("pause task", "pause_background_task"),
+            ("resume task", "resume_background_task"),
+            ("cancel task", "cancel_background_task"),
+        ):
+            if lowered.startswith(verb + " "):
+                return intent, {"task_id": text[len(verb) + 1 :].strip()}
+
+        run_now_match = re.match(r"run task ([a-f0-9-]+) now", lowered)
+        if run_now_match:
+            return "run_background_task", {"task_id": run_now_match.group(1)}
 
         coding_triggers = (
             "fix failing test",
@@ -871,6 +963,155 @@ class ChatService:
             f"Root: {inspection.project_root}\n"
             f"Validation: {cmds}\n"
             f"Status: {inspection.git_status[:300]}"
+        )
+
+    async def _background_tasks(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = BackgroundTaskService(self.session, self.settings)
+        tasks = await svc.list_tasks(principal)
+        if not tasks:
+            return "Background Tasks\n──────────────\n(no tasks scheduled)"
+        lines = []
+        for task in tasks:
+            nxt = task.next_run_at.isoformat() if task.next_run_at else "—"
+            lines.append(
+                f"• {task.title}\n"
+                f"  id: {task.id}\n"
+                f"  type: {task.task_type}  status: {task.status}\n"
+                f"  schedule: {task.schedule_kind} {task.schedule_expression}\n"
+                f"  next: {nxt}"
+            )
+        return "Background Tasks\n──────────────\n" + "\n\n".join(lines)
+
+    async def _create_background_task(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = BackgroundTaskService(self.session, self.settings)
+        project_svc = ProjectService(self.session, self.settings)
+        active = await project_svc.get_active_project_or_none(principal)
+        if active is None and args.get("task_type") not in {
+            BackgroundTaskType.SYSTEM_STATUS.value,
+            BackgroundTaskType.REMINDER_NOTE.value,
+        }:
+            return "No active project. Use: set project <path> first."
+        title = args.get("title") or BackgroundTaskService.default_title_for_type(args["task_type"])
+        task = await svc.create_task(
+            principal,
+            task_type=args["task_type"],
+            title=title,
+            prompt=None,
+            project_root=active.project_root if active else None,
+            schedule_kind=args["schedule_kind"],
+            schedule_expression=args["schedule_expression"],
+        )
+        await self.session.flush()
+        nxt = task.next_run_at.isoformat() if task.next_run_at else "—"
+        return (
+            f"Created background task {task.id}\n"
+            f"Title: {task.title}\n"
+            f"Type: {task.task_type}\n"
+            f"Schedule: {task.schedule_kind} {task.schedule_expression}\n"
+            f"Next run: {nxt}\n"
+            f"Status: {task.status}"
+        )
+
+    async def _pause_background_task(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        task_id = args.get("task_id", "").strip()
+        if not task_id:
+            return "Usage: pause task <id>"
+        svc = BackgroundTaskService(self.session, self.settings)
+        task = await svc.pause_task(principal, task_id)
+        await self.session.flush()
+        return f"Paused task {task.id} ({task.title})"
+
+    async def _resume_background_task(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        task_id = args.get("task_id", "").strip()
+        if not task_id:
+            return "Usage: resume task <id>"
+        svc = BackgroundTaskService(self.session, self.settings)
+        task = await svc.resume_task(principal, task_id)
+        await self.session.flush()
+        nxt = task.next_run_at.isoformat() if task.next_run_at else "—"
+        return f"Resumed task {task.id}. Next run: {nxt}"
+
+    async def _cancel_background_task(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        task_id = args.get("task_id", "").strip()
+        if not task_id:
+            return "Usage: cancel task <id>"
+        svc = BackgroundTaskService(self.session, self.settings)
+        task = await svc.cancel_task(principal, task_id)
+        await self.session.flush()
+        return f"Cancelled task {task.id} ({task.title})"
+
+    async def _run_background_task(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        task_id = args.get("task_id", "").strip()
+        if not task_id:
+            return "Usage: run task <id> now"
+        sched = BackgroundSchedulerService(self.session, self.settings)
+        run = await sched.run_task_now(principal, task_id)
+        await self.session.flush()
+        return (
+            f"Ran task {task_id} now\n"
+            f"Run id: {run.id}\n"
+            f"Status: {run.status}\n"
+            f"Summary: {run.summary or '(none)'}"
+        )
+
+    async def _notifications_list(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = NotificationService(self.session)
+        items, unread = await svc.list_notifications(principal, limit=20)
+        if not items:
+            return "Notifications\n─────────────\n(empty)"
+        lines = []
+        for item in items:
+            flag = "read" if item.read_at else "unread"
+            lines.append(
+                f"• [{flag}] {item.title}\n  {item.summary[:200]}\n  {item.created_at.isoformat()}"
+            )
+        return f"Notifications ({unread} unread)\n─────────────\n" + "\n\n".join(lines)
+
+    async def _failed_background_tasks(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = BackgroundTaskService(self.session, self.settings)
+        tasks = await svc.list_tasks(principal)
+        failed = [t for t in tasks if t.status == "failed" or (t.failure_count or 0) > 0]
+        if not failed:
+            return "No failed background tasks."
+        lines = [
+            f"- {t.title} ({t.id}) failures={t.failure_count} last={t.last_result_summary or '—'}"
+            for t in failed
+        ]
+        return "Failed background tasks:\n" + "\n".join(lines)
+
+    async def _summarize_latest_run(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = BackgroundTaskService(self.session, self.settings)
+        tasks = await svc.list_tasks(principal)
+        if not tasks:
+            return "No background tasks."
+        latest_task = tasks[0]
+        runs = await svc.list_runs(principal, latest_task.id)
+        if not runs:
+            return f"No runs yet for task {latest_task.title} ({latest_task.id})."
+        run = runs[0]
+        return (
+            f"Latest run for {latest_task.title}\n"
+            f"Run: {run.id} status={run.status}\n"
+            f"Summary: {run.summary or '(none)'}\n"
+            f"Error: {run.error or '(none)'}"
         )
 
     async def _run_validation(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:

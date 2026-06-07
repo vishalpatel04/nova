@@ -253,6 +253,70 @@ final class NOVAAPIClient: ObservableObject {
         return try decoder.decode(MacSchedulerStatus.self, from: data)
     }
 
+    func fetchBackgroundTasks() async throws -> [MacBackgroundTask] {
+        let data = try await request(path: "/api/v1/background-tasks")
+        return try decoder.decode(MacBackgroundTaskList.self, from: data).tasks
+    }
+
+    func fetchBackgroundTask(taskId: String) async throws -> MacBackgroundTask {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)")
+        return try decoder.decode(MacBackgroundTask.self, from: data)
+    }
+
+    func createBackgroundTask(body: MacBackgroundTaskCreate) async throws -> MacBackgroundTask {
+        let data = try await request(path: "/api/v1/background-tasks", method: "POST", body: body)
+        return try decoder.decode(MacBackgroundTask.self, from: data)
+    }
+
+    func pauseBackgroundTask(taskId: String) async throws -> MacBackgroundTask {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)/pause", method: "POST")
+        return try decoder.decode(MacBackgroundTask.self, from: data)
+    }
+
+    func resumeBackgroundTask(taskId: String) async throws -> MacBackgroundTask {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)/resume", method: "POST")
+        return try decoder.decode(MacBackgroundTask.self, from: data)
+    }
+
+    func cancelBackgroundTask(taskId: String) async throws -> MacBackgroundTask {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)/cancel", method: "POST")
+        return try decoder.decode(MacBackgroundTask.self, from: data)
+    }
+
+    func runBackgroundTaskNow(taskId: String) async throws -> MacBackgroundTaskRun {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)/run-now", method: "POST")
+        return try decoder.decode(MacBackgroundTaskRun.self, from: data)
+    }
+
+    func fetchBackgroundTaskRuns(taskId: String) async throws -> [MacBackgroundTaskRun] {
+        let data = try await request(path: "/api/v1/background-tasks/\(taskId)/runs")
+        return try decoder.decode(MacBackgroundTaskRunList.self, from: data).runs
+    }
+
+    func fetchBackgroundSchedulerStatus() async throws -> MacBackgroundSchedulerStatus {
+        let data = try await request(path: "/api/v1/background-tasks/scheduler-status")
+        return try decoder.decode(MacBackgroundSchedulerStatus.self, from: data)
+    }
+
+    func fetchNotifications() async throws -> MacNotificationList {
+        let data = try await request(path: "/api/v1/notifications")
+        return try decoder.decode(MacNotificationList.self, from: data)
+    }
+
+    func markNotificationRead(notificationId: String) async throws -> MacNotificationItem {
+        let data = try await request(
+            path: "/api/v1/notifications/\(notificationId)/read",
+            method: "POST"
+        )
+        return try decoder.decode(MacNotificationItem.self, from: data)
+    }
+
+    func markAllNotificationsRead() async throws -> Int {
+        struct Response: Decodable { let markedRead: Int }
+        let data = try await request(path: "/api/v1/notifications/read-all", method: "POST")
+        return try decoder.decode(Response.self, from: data).markedRead
+    }
+
     func fetchRuntimeStatus() async throws -> MacRuntimeStatus {
         let data = try await request(path: "/api/v1/runtime/status")
         return try decoder.decode(MacRuntimeStatus.self, from: data)
@@ -435,6 +499,71 @@ struct MacCompanionInboxItem: Identifiable, Decodable {
 struct MacSchedulerStatus: Decodable {
     let paused: Bool
     let taskCount: Int
+}
+
+struct MacBackgroundTask: Identifiable, Decodable {
+    let id: String
+    let taskType: String
+    let title: String
+    let projectRoot: String?
+    let scheduleKind: String
+    let scheduleExpression: String
+    let status: String
+    let nextRunAt: Date?
+    let lastResultSummary: String?
+    let lastError: String?
+    let runCount: Int
+    let failureCount: Int
+}
+
+struct MacBackgroundTaskList: Decodable {
+    let tasks: [MacBackgroundTask]
+}
+
+struct MacBackgroundTaskCreate: Encodable {
+    let taskType: String
+    let title: String
+    let projectRoot: String?
+    let scheduleKind: String
+    let scheduleExpression: String
+}
+
+struct MacBackgroundTaskRun: Identifiable, Decodable {
+    let id: String
+    let taskId: String
+    let status: String
+    let summary: String?
+    let error: String?
+    let attempt: Int
+    let startedAt: Date?
+    let finishedAt: Date?
+}
+
+struct MacBackgroundTaskRunList: Decodable {
+    let runs: [MacBackgroundTaskRun]
+}
+
+struct MacBackgroundSchedulerStatus: Decodable {
+    let active: Bool
+    let activeTasks: Int
+    let failedTasks: Int
+    let dueTasks: Int
+    let unreadNotifications: Int
+}
+
+struct MacNotificationItem: Identifiable, Decodable {
+    let id: String
+    let notificationType: String
+    let title: String
+    let summary: String
+    let taskId: String?
+    let read: Bool
+    let createdAt: Date
+}
+
+struct MacNotificationList: Decodable {
+    let notifications: [MacNotificationItem]
+    let unreadCount: Int
 }
 
 struct MacApprovalRequest: Identifiable, Decodable {
