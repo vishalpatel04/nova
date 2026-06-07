@@ -135,9 +135,7 @@ async def hybrid_retrieve(
         select(MemoryRelationship).where(MemoryRelationship.user_id == user_id)
     )
     entity_names: dict[str, str] = {}
-    ent_result = await session.execute(
-        select(MemoryEntity).where(MemoryEntity.user_id == user_id)
-    )
+    ent_result = await session.execute(select(MemoryEntity).where(MemoryEntity.user_id == user_id))
     for ent in ent_result.scalars().all():
         entity_names[ent.id] = ent.canonical_name
     for rel in rel_result.scalars().all():

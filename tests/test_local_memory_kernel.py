@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.services.memory_kernel import MemoryKernelService
 from nova_core.memory.access_policy import AccessProfile, resolve_access_policy
 from nova_core.memory.vault import is_vault_path, sanitize_for_external_response
-from nova_core.models.orm import MemoryFact, User
+from nova_core.models.orm import MemoryDocument, MemoryFact, User
 from nova_core.schemas.settings import Settings
 
 
@@ -122,6 +122,8 @@ async def test_memory_overview_api(auth_client: AsyncClient, paired_client_token
     data = resp.json()
     assert data["local_only"] is True
     assert data["vault_invisible"] is True
+    assert data["vault_path"] == "[vault: redacted]"
+    assert "NOVA_VAULT" not in data["vault_path"]
 
 
 @pytest.mark.asyncio
@@ -156,6 +158,35 @@ async def test_vault_folder_api_blocked(
     resp = await auth_client.post("/api/v1/memory/include-folder", json={"path": vault_path})
     assert resp.status_code == 403
     assert "NOVA_VAULT" in resp.json()["detail"] or "inaccessible" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_broad_local_scan_keeps_siblings_when_vault_exists(
+    db_session: AsyncSession,
+    test_settings: Settings,
+    memory_user: User,
+    memory_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (memory_home / "Desktop").mkdir(exist_ok=True)
+    (memory_home / "Desktop" / "note.txt").write_text("desktop note", encoding="utf-8")
+    (memory_home / "Projects").mkdir(exist_ok=True)
+    (memory_home / "Projects" / "project.txt").write_text("project note", encoding="utf-8")
+    monkeypatch.setattr("nova_core.memory.access_policy.Path.home", lambda: memory_home)
+
+    svc = MemoryKernelService(db_session, test_settings)
+    await svc.set_access_profile(memory_user.id, AccessProfile.BROAD_LOCAL)
+    result = await svc.scan_sources(memory_user.id, max_files=10)
+
+    assert result["paused"] is False
+    assert result["discovered"] >= 2
+    docs = await db_session.execute(
+        select(MemoryDocument).where(MemoryDocument.user_id == memory_user.id)
+    )
+    indexed = [doc.canonical_path for doc in docs.scalars().all()]
+    assert any("Desktop" in path for path in indexed)
+    assert any("Projects" in path for path in indexed)
+    assert all("NOVA_VAULT" not in path for path in indexed)
 
 
 @pytest.mark.asyncio

@@ -162,8 +162,7 @@ class MemoryKernelService:
                 dirnames[:] = [
                     d for d in dirnames if not should_skip_dir(d, override_performance=override)
                 ]
-                if any(is_vault_path(str(Path(dirpath) / d)) for d in dirnames):
-                    dirnames.clear()
+                dirnames[:] = [d for d in dirnames if not is_vault_path(str(Path(dirpath) / d))]
                 for name in filenames:
                     if discovered >= max_files:
                         break
@@ -550,7 +549,7 @@ class MemoryKernelService:
                 for s in sources.scalars().all()
                 if not is_vault_path(s.root_path)
             ],
-            "vault_path": str(Path.home() / "NOVA_VAULT"),
+            "vault_path": "[vault: redacted]",
             "vault_invisible": True,
         }
 
