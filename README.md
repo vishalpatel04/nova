@@ -59,6 +59,12 @@ NOVA now has persisted chat sessions, local-first provider execution, provider h
 approval-gated automation runs, scheduled-task records, companion prompt queuing, and macOS local
 SQLite chat restore. Paid providers remain explicit opt-in. See [Phase 3B Runtime](docs/PHASE_3B_RUNTIME.md).
 
+## Daily Driver Chat + Voice
+
+The macOS popup now carries the daily-driver chat flow: real local conversational replies, bounded
+conversation memory, structured personal memory, safe personal search, and popup-open wake-word
+support. See [Daily Driver Chat, Memory, and Voice](docs/DAILY_DRIVER_CHAT_MEMORY_VOICE.md).
+
 ## Slice 2C — Native hardening
 
 Automatic pairing polling, macOS Mission Room WebSocket, **⌃⌥ Space** global hotkey, launch-at-login, launchd worker install, XCTest targets, and [first live demo](docs/FIRST_LIVE_DEMO.md).

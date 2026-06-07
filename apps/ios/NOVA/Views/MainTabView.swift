@@ -31,8 +31,3 @@ struct MainTabView: View {
         .tint(DesignTokens.novaBlue)
     }
 }
-
-#Preview {
-    MainTabView()
-        .environmentObject(AppState())
-}

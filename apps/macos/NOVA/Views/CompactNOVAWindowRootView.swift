@@ -11,6 +11,6 @@ struct CompactNOVAWindowRootView: View {
                 MenuBarView()
             }
         }
-        .frame(minWidth: 340, idealWidth: 380, minHeight: 380, idealHeight: 460)
+        .frame(minWidth: 380, idealWidth: 440, minHeight: 460, idealHeight: 560)
     }
 }

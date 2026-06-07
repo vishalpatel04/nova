@@ -36,9 +36,3 @@ struct NovaOrbView: View {
         .onAppear { isPulsing = true }
     }
 }
-
-#Preview {
-    NovaOrbView()
-        .padding()
-        .background(Color.black)
-}

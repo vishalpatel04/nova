@@ -471,6 +471,11 @@ struct MacChatResponse: Decodable {
     let activeProject: String?
     let pendingToolIntent: String?
     let unifiedDiff: String?
+    let runtimeMode: String?
+    let selectedProvider: String?
+    let selectedModel: String?
+    let fallbackReason: String?
+    let localAvailable: Bool?
 }
 
 struct MacTaskTimelineEntry: Decodable, Identifiable {
@@ -499,6 +504,13 @@ struct MacRuntimeStatus: Decodable {
     let ollamaModelReady: Bool
     let providerBadge: String?
     let statusMessage: String?
+    let runtimeMode: String?
+    let selectedProvider: String?
+    let selectedModel: String?
+    let fallbackReason: String?
+    let localAvailable: Bool?
+    let wakeWordSupported: Bool?
+    let voiceOnDeviceSupported: Bool?
 }
 
 struct MacProviderHealth: Decodable {

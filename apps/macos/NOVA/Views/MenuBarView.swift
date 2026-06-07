@@ -15,7 +15,7 @@ struct MenuBarView: View {
             Divider()
             footer
         }
-        .frame(width: 360)
+        .frame(minWidth: 380, idealWidth: 420, maxWidth: 540)
         .task {
             await appState.pollWorkerHealth()
             await appState.refreshRuntimeStatus()
@@ -31,6 +31,7 @@ struct MenuBarView: View {
                 Text(appState.voiceMode.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
             ProviderStatusBadge(
@@ -72,6 +73,7 @@ struct ProviderStatusBadge: View {
                 .frame(width: 8, height: 8)
             Text(label)
                 .font(.caption2)
+                .lineLimit(1)
         }
     }
 }
@@ -86,6 +88,7 @@ struct WorkerHealthBadge: View {
                 .frame(width: 8, height: 8)
             Text(health.label)
                 .font(.caption2)
+                .lineLimit(1)
         }
     }
 
@@ -97,9 +100,4 @@ struct WorkerHealthBadge: View {
         case .unknown: return .gray
         }
     }
-}
-
-#Preview {
-    MenuBarView()
-        .environmentObject(MacAppState())
 }

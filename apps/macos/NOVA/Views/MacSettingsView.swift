@@ -103,9 +103,43 @@ struct MacSettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
-                Text("Wake word: pluggable provider reserved — no daemon in this slice.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                Section("Voice") {
+                    Toggle("Enable microphone input", isOn: Binding(
+                        get: { appState.voiceInputEnabled },
+                        set: { appState.voiceInputEnabled = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Enable “Hey Nova” while popup is open", isOn: Binding(
+                        get: { appState.voiceWakeWordEnabled },
+                        set: { appState.voiceWakeWordEnabled = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Start listening when popup opens", isOn: Binding(
+                        get: { appState.voiceStartListeningOnOpen },
+                        set: { appState.voiceStartListeningOnOpen = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Auto-send after voice transcription", isOn: Binding(
+                        get: { appState.voiceAutoSendAfterTranscription },
+                        set: { appState.voiceAutoSendAfterTranscription = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Sound cue on wake", isOn: Binding(
+                        get: { appState.voiceWakeSoundEnabled },
+                        set: { appState.voiceWakeSoundEnabled = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Stop listening when popup closes", isOn: Binding(
+                        get: { appState.voiceStopListeningOnClose },
+                        set: { appState.voiceStopListeningOnClose = $0; appState.saveVoicePreferences() }
+                    ))
+                    Toggle("Voice Off kill switch", isOn: Binding(
+                        get: { appState.voiceKillSwitch },
+                        set: { appState.voiceKillSwitch = $0; appState.saveVoicePreferences() }
+                    ))
+                    Text("Background listening when NOVA is closed is coming later and requires a separate privacy review.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("If on-device speech recognition is unavailable, wake-word mode stays disabled.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding()
             .tabItem { Label("General", systemImage: "gear") }

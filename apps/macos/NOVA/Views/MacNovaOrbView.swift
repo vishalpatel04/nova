@@ -28,8 +28,3 @@ struct MacNovaOrbView: View {
         .onAppear { isPulsing = true }
     }
 }
-
-#Preview {
-    MacNovaOrbView()
-        .padding()
-}

@@ -47,6 +47,11 @@ async def chat(
         risk_level=result.get("risk_level"),
         active_project=result.get("active_project"),
         pending_tool_intent=result.get("pending_tool_intent"),
+        runtime_mode=result.get("runtime_mode"),
+        selected_provider=result.get("selected_provider"),
+        selected_model=result.get("selected_model"),
+        fallback_reason=result.get("fallback_reason"),
+        local_available=result.get("local_available"),
     )
 
 

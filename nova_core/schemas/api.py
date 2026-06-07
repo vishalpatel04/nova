@@ -184,6 +184,11 @@ class ChatResponse(BaseModel):
     risk_level: str | None = None
     active_project: str | None = None
     pending_tool_intent: str | None = None
+    runtime_mode: str | None = None
+    selected_provider: str | None = None
+    selected_model: str | None = None
+    fallback_reason: str | None = None
+    local_available: bool | None = None
 
 
 class ApprovalRequestCreateBody(BaseModel):
@@ -323,6 +328,13 @@ class RuntimeStatusResponse(BaseModel):
     ollama_model_ready: bool = False
     provider_badge: str | None = None
     status_message: str | None = None
+    runtime_mode: str | None = None
+    selected_provider: str | None = None
+    selected_model: str | None = None
+    fallback_reason: str | None = None
+    local_available: bool | None = None
+    wake_word_supported: bool | None = None
+    voice_on_device_supported: bool | None = None
 
 
 class AutomationExecuteRequest(BaseModel):

@@ -32,19 +32,56 @@ final class GenieChatStateTests: XCTestCase {
         XCTAssertEqual(state.compactWindowMode, .chat)
     }
 
+    func testVoiceDefaultsAreSafe() {
+        let state = MacAppState(userDefaults: defaults)
+        XCTAssertTrue(state.voiceInputEnabled)
+        XCTAssertFalse(state.voiceWakeWordEnabled)
+        XCTAssertFalse(state.voiceKillSwitch)
+        XCTAssertTrue(state.voiceStopListeningOnClose)
+    }
+
+    func testNewChatClearsConversation() {
+        let state = MacAppState(userDefaults: defaults)
+        state.chatDraft = "hello"
+        state.chatMessages = [ChatMessage(role: .assistant, content: "hi")]
+        state.pendingToolIntent = "personal_search_scope_confirmation"
+        state.startNewChat()
+        XCTAssertNil(state.activeChatSessionId)
+        XCTAssertTrue(state.chatMessages.isEmpty)
+        XCTAssertEqual(state.chatDraft, "")
+        XCTAssertNil(state.pendingToolIntent)
+    }
+
+    func testProviderBadgeReflectsRuntimeMode() {
+        let state = MacAppState(userDefaults: defaults)
+        state.runtimeMode = "degraded_rule_based"
+        state.fallbackReason = "provider_unreachable"
+        state.updateProviderBadge()
+        XCTAssertEqual(state.providerBadge, "degraded · local unavailable")
+    }
+
     func testDoneEventCarriesActiveProject() {
         let event = ChatStreamEvent(
             kind: .done(
+                response: "hello",
                 intent: "set_project",
                 blocked: false,
                 sessionId: "sess-1",
                 activeProject: "nova",
-                pendingToolIntent: nil
+                pendingToolIntent: nil,
+                runtimeMode: "local_ollama",
+                selectedProvider: "local",
+                selectedModel: "qwen2.5:7b",
+                fallbackReason: nil,
+                localAvailable: true
             )
         )
-        if case .done(let intent, _, _, let activeProject, _) = event.kind {
+        if case .done(let response, let intent, _, _, let activeProject, _, let runtimeMode, _, _, _, let localAvailable) = event.kind {
+            XCTAssertEqual(response, "hello")
             XCTAssertEqual(intent, "set_project")
             XCTAssertEqual(activeProject, "nova")
+            XCTAssertEqual(runtimeMode, "local_ollama")
+            XCTAssertTrue(localAvailable ?? false)
         } else {
             XCTFail("expected done event")
         }
