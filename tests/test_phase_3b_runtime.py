@@ -1,11 +1,45 @@
 """Phase 3B integrated runtime tests."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nova_core.models.orm import AuditEvent, AutomationRun, ChatMessageRecord, ChatSession
+
+
+async def _pair_other_client(auth_client: AsyncClient) -> str:
+    device_id = f"test-client-{uuid.uuid4().hex[:8]}"
+    auth_client.headers["Authorization"] = "Bearer nova_bts_test_admin"
+    create_resp = await auth_client.post(
+        "/api/v1/pairing/codes",
+        json={"device_type": "iphone_client", "proposed_device_id": device_id},
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    code = create_resp.json()["code"]
+    claim = await auth_client.post(
+        "/api/v1/pairing/claim",
+        json={
+            "code": code,
+            "device_id": device_id,
+            "name": "Other Client",
+            "device_type": "iphone_client",
+        },
+        headers={k: v for k, v in auth_client.headers.items() if k.lower() != "authorization"},
+    )
+    assert claim.status_code == 200, claim.text
+    if claim.json().get("status") in ("pending", "pending_approval"):
+        pairing_id = create_resp.json()["pairing_id"]
+        await auth_client.post(f"/api/v1/pairing/{pairing_id}/approve")
+        token_resp = await auth_client.post(
+            f"/api/v1/pairing/{pairing_id}/token",
+            json={"device_id": device_id},
+        )
+        assert token_resp.status_code == 200, token_resp.text
+        return token_resp.json()["token"]
+    return claim.json()["token"]
 
 
 @pytest.mark.asyncio
@@ -112,6 +146,33 @@ async def test_automation_dry_run_and_schedule(
     listed = await auth_client.get("/api/v1/automation/schedules")
     assert listed.status_code == 200
     assert any(task["title"] == "Morning status" for task in listed.json())
+
+
+@pytest.mark.asyncio
+async def test_automation_schedules_are_device_scoped(
+    auth_client: AsyncClient, paired_client_token
+) -> None:
+    _device_a, token_a = paired_client_token
+    auth_client.headers["Authorization"] = f"Bearer {token_a}"
+
+    create = await auth_client.post(
+        "/api/v1/automation/schedules",
+        json={
+            "title": "Device A schedule",
+            "provider": "n8n",
+            "action": "status",
+            "schedule": "0 9 * * *",
+            "payload": {},
+        },
+    )
+    assert create.status_code == 201, create.text
+
+    token_b = await _pair_other_client(auth_client)
+    auth_client.headers["Authorization"] = f"Bearer {token_b}"
+
+    listed = await auth_client.get("/api/v1/automation/schedules")
+    assert listed.status_code == 200
+    assert all(task["title"] != "Device A schedule" for task in listed.json())
 
 
 @pytest.mark.asyncio
