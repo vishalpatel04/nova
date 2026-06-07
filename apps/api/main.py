@@ -13,6 +13,7 @@ from apps.api.routes import (
     chat_router,
     core_router,
     devices_router,
+    executions_router,
     pairing_router,
     runtime_router,
     scheduler_router,
@@ -121,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(core_router, prefix="/api/v1")
     app.include_router(approvals_router, prefix="/api/v1")
+    app.include_router(executions_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(pairing_router, prefix="/api/v1")
     app.include_router(runtime_router, prefix="/api/v1")

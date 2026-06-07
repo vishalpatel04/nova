@@ -513,3 +513,25 @@ class ApprovalRequest(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ShellExecution(Base):
+    __tablename__ = "shell_executions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    approval_id: Mapped[str] = mapped_column(
+        ForeignKey("approval_requests.id"), nullable=False, index=True, unique=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    capability: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    command_preview: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    stdout_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

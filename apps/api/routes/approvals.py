@@ -12,6 +12,7 @@ from nova_core.auth.principal import Principal
 from nova_core.capabilities.model import CapabilityName, RiskLevel
 from nova_core.models.orm import ApprovalRequest
 from nova_core.schemas.api import (
+    ApprovalActionableListResponse,
     ApprovalPendingListResponse,
     ApprovalRequestCreateBody,
     ApprovalRequestResponse,
@@ -73,6 +74,22 @@ async def list_pending_approvals(
     items = await svc.list_pending(principal)
     await session.commit()
     return ApprovalPendingListResponse(items=[_approval_response(item) for item in items])
+
+
+@router.get("/actionable", response_model=ApprovalActionableListResponse)
+async def list_actionable_approvals(
+    principal: Annotated[Principal, Depends(require_roles("client"))],
+    session: AsyncSession = Depends(get_db_session),
+) -> ApprovalActionableListResponse:
+    settings = get_settings()
+    svc = ApprovalRequestService(session, settings)
+    pending = await svc.list_pending(principal)
+    approved = await svc.list_approved(principal)
+    await session.commit()
+    return ApprovalActionableListResponse(
+        pending=[_approval_response(item) for item in pending],
+        approved=[_approval_response(item) for item in approved],
+    )
 
 
 @router.post("/{approval_id}/approve", response_model=ApprovalRequestResponse)

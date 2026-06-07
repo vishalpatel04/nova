@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from nova_core.capabilities.model import CapabilityName, RiskLevel, risk_for_capability
+from nova_core.shell.safe_command import validate_safe_shell_command
 from nova_core.tools.protected_paths import PROTECTED_PATH_MESSAGE, is_protected_path
 
 
@@ -41,6 +42,16 @@ def resolve_chat_message(text: str) -> ActionResolution | None:
 
     if lowered.startswith("run shell ") or lowered.startswith("execute command "):
         command = _shell_command_preview(text)
+        validation = validate_safe_shell_command(command)
+        if not validation.allowed:
+            return ActionResolution(
+                kind="blocked",
+                capability=CapabilityName.SHELL_EXECUTE,
+                message=validation.reason or "Blocked: command is not on the safe shell allowlist.",
+                action_summary="Execute shell command",
+                preview=command,
+                risk_level=RiskLevel.CRITICAL,
+            )
         return ActionResolution(
             capability=CapabilityName.SHELL_EXECUTE,
             payload={"command": command},
@@ -52,8 +63,9 @@ def resolve_chat_message(text: str) -> ActionResolution | None:
     if "rm -rf" in lowered or lowered.startswith("sudo "):
         command = _shell_command_preview(text) if "shell" in lowered else text.strip()
         return ActionResolution(
+            kind="blocked",
             capability=CapabilityName.SHELL_EXECUTE,
-            payload={"command": command},
+            message="Blocked: destructive or privileged commands cannot be approved.",
             action_summary="Execute destructive shell command",
             preview=command,
             risk_level=RiskLevel.CRITICAL,

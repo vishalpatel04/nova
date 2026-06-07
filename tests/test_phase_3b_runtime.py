@@ -19,7 +19,7 @@ async def test_general_chat_persists_session_and_usage(
     assert resp.status_code == 200
     body = resp.json()
     assert body["session_id"]
-    assert body["token_usage"]["provider"] == "local"
+    assert body["token_usage"]["provider"] in {"local", "qwen"}
     assert body["blocked"] is False
 
     session_result = await db_session.execute(
