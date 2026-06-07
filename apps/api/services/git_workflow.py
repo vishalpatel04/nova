@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from dataclasses import dataclass
@@ -57,6 +58,14 @@ def _utc_now() -> datetime:
 def _sanitize_branch_name(name: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9/_-]", "-", name.strip())[:64]
     return cleaned or "nova/branch"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _validate_staged_paths(project_root: Path, paths: list[str]) -> tuple[bool, str | None]:
@@ -169,6 +178,9 @@ class GitWorkflowService:
         ok, reason = _validate_staged_paths(root, staged_paths)
         if not ok:
             raise ValidationError(reason or "Invalid staged paths")
+        staged_snapshot = [
+            {"path": rel, "content_hash": _sha256_file(root / rel)} for rel in staged_paths
+        ]
         message = commit_message.strip()[:500]
         if not message:
             raise ValidationError("Commit message required")
@@ -176,6 +188,7 @@ class GitWorkflowService:
             "project_root": str(root),
             "commit_message": message,
             "staged_paths": staged_paths,
+            "staged_snapshot": staged_snapshot,
         }
         preview = (
             f"Local commit\nMessage: {message}\nFiles: {', '.join(staged_paths)}\nPush: DISABLED"
@@ -204,12 +217,50 @@ class GitWorkflowService:
         root = self._resolve_root(str(payload.get("project_root", "")))
         message = str(payload.get("commit_message", ""))
         staged_paths = list(payload.get("staged_paths") or [])
+        staged_snapshot = list(payload.get("staged_snapshot") or [])
         fp = compute_action_fingerprint(CapabilityName.GIT_COMMIT.value, payload)
         if fp != record.action_fingerprint:
             raise ConflictError("Commit approval fingerprint mismatch")
         ok, reason = _validate_staged_paths(root, staged_paths)
         if not ok:
             raise ValidationError(reason or "Invalid staged paths")
+        if len(staged_snapshot) != len(staged_paths):
+            raise ConflictError("Commit approval snapshot mismatch")
+        approved_paths = {
+            str(item.get("path", "")) for item in staged_snapshot if isinstance(item, dict)
+        }
+        if approved_paths != set(staged_paths):
+            raise ConflictError("Commit approval snapshot mismatch")
+        for entry in staged_snapshot:
+            if not isinstance(entry, dict):
+                raise ConflictError("Commit approval snapshot mismatch")
+            rel = str(entry.get("path", ""))
+            expected_hash = str(entry.get("content_hash", ""))
+            if not rel or not expected_hash:
+                raise ConflictError("Commit approval snapshot mismatch")
+            current_hash = _sha256_file(root / rel)
+            if current_hash != expected_hash:
+                raise ConflictError(f"Commit approval content changed for {rel}")
+        staged_before_proc = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if staged_before_proc.returncode != 0:
+            raise ValidationError(
+                sanitize_output_excerpt(
+                    (staged_before_proc.stderr or staged_before_proc.stdout or "")[:300]
+                )
+            )
+        staged_before_set = {
+            line.strip() for line in (staged_before_proc.stdout or "").splitlines() if line.strip()
+        }
+        extra_staged = sorted(staged_before_set - set(staged_paths))
+        if extra_staged:
+            raise ConflictError(f"Unapproved staged files present: {', '.join(extra_staged[:10])}")
         for rel in staged_paths:
             stage_proc = subprocess.run(
                 ["git", "add", rel],

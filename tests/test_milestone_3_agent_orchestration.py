@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -113,6 +114,14 @@ async def _approved_record(
     await db_session.commit()
     await db_session.refresh(record)
     return record
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def test_planner_max_steps_enforced() -> None:
@@ -416,14 +425,68 @@ async def test_fingerprint_mismatch_blocks_git_commit(
     paired_client_token: tuple[str, str],
 ) -> None:
     device_id, _ = paired_client_token
+    target = allow_demo_root / "tests" / "demo_fail.py"
     payload = {
         "project_root": str(allow_demo_root),
         "commit_message": "fix",
         "staged_paths": ["tests/demo_fail.py"],
+        "staged_snapshot": [{"path": "tests/demo_fail.py", "content_hash": _file_hash(target)}],
     }
     record = await _approved_record(db_session, device_id, CapabilityName.GIT_COMMIT, payload)
     record.action_fingerprint = "deadbeef" * 8
     await db_session.commit()
+    git_svc = GitWorkflowService(db_session, test_settings)
+    principal = _principal(device_id)
+    with pytest.raises(Exception):
+        await git_svc.commit_approved(principal, record.id)
+
+
+@pytest.mark.asyncio
+async def test_git_commit_rejects_mutated_files_after_approval(
+    db_session: AsyncSession,
+    test_settings: Settings,
+    allow_demo_root: Path,
+    paired_client_token: tuple[str, str],
+) -> None:
+    device_id, _ = paired_client_token
+    target = allow_demo_root / "tests" / "demo_fail.py"
+    payload = {
+        "project_root": str(allow_demo_root),
+        "commit_message": "fix",
+        "staged_paths": ["tests/demo_fail.py"],
+        "staged_snapshot": [{"path": "tests/demo_fail.py", "content_hash": _file_hash(target)}],
+    }
+    record = await _approved_record(db_session, device_id, CapabilityName.GIT_COMMIT, payload)
+    target.write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+    git_svc = GitWorkflowService(db_session, test_settings)
+    principal = _principal(device_id)
+    with pytest.raises(Exception):
+        await git_svc.commit_approved(principal, record.id)
+
+
+@pytest.mark.asyncio
+async def test_git_commit_rejects_unapproved_staged_files(
+    db_session: AsyncSession,
+    test_settings: Settings,
+    allow_demo_root: Path,
+    paired_client_token: tuple[str, str],
+) -> None:
+    import subprocess
+
+    device_id, _ = paired_client_token
+    target = allow_demo_root / "tests" / "demo_fail.py"
+    extra = allow_demo_root / "notes.txt"
+    extra.write_text("unapproved staged content\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", str(extra.relative_to(allow_demo_root))], cwd=allow_demo_root, check=False
+    )
+    payload = {
+        "project_root": str(allow_demo_root),
+        "commit_message": "fix",
+        "staged_paths": ["tests/demo_fail.py"],
+        "staged_snapshot": [{"path": "tests/demo_fail.py", "content_hash": _file_hash(target)}],
+    }
+    record = await _approved_record(db_session, device_id, CapabilityName.GIT_COMMIT, payload)
     git_svc = GitWorkflowService(db_session, test_settings)
     principal = _principal(device_id)
     with pytest.raises(Exception):
