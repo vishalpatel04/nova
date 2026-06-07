@@ -32,7 +32,7 @@ from nova_core.models.orm import (  # noqa: F401 — register models
     WorkerCommandAssignment,
 )
 
-from .database_url import configure_alembic_database_url
+from infra.migrations.database_url import configure_alembic_database_url
 
 config = context.config
 if config.config_file_name is not None:
