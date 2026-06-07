@@ -237,9 +237,14 @@ class AutomationService:
         return task
 
     async def list_scheduled(self, principal: Principal) -> list[ScheduledTask]:
+        if not principal.device_id:
+            return []
         result = await self.session.execute(
             select(ScheduledTask)
-            .where(ScheduledTask.user_id == principal.user_id)
+            .where(
+                ScheduledTask.user_id == principal.user_id,
+                ScheduledTask.device_id == principal.device_id,
+            )
             .order_by(ScheduledTask.created_at.desc())
             .limit(50)
         )

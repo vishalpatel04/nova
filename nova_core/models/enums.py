@@ -170,3 +170,41 @@ class CodingTaskStage(StrEnum):
     RERUNNING_VALIDATION = "rerunning_validation"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class BackgroundTaskType(StrEnum):
+    REPO_HEALTH_CHECK = "repo.health_check"
+    REPO_RUN_VALIDATION = "repo.run_validation"
+    REPO_INSPECT = "repo.inspect"
+    PROJECT_SUMMARY = "project.summary"
+    SYSTEM_STATUS = "system.status"
+    REMINDER_NOTE = "reminder.note"
+
+
+class BackgroundScheduleKind(StrEnum):
+    ONCE = "once"
+    INTERVAL = "interval"
+    CRON = "cron"
+
+
+class BackgroundTaskStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class BackgroundRunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class NotificationType(StrEnum):
+    TASK_SUCCEEDED = "task.succeeded"
+    TASK_FAILED = "task.failed"
+    VALIDATION_FAILED = "validation.failed"
+    VALIDATION_RECOVERED = "validation.recovered"
+    REMINDER = "reminder"

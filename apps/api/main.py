@@ -1,7 +1,8 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 from apps.api.deps import AppState, set_app_state
 from apps.api.routes import (
     approvals_router,
+    background_tasks_router,
     chat_router,
     core_router,
     devices_router,
@@ -61,12 +63,43 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     _validate_startup(settings)
 
+    scheduler_task: asyncio.Task[None] | None = None
+    if settings.nova_env != "test":
+        scheduler_task = asyncio.create_task(_background_scheduler_loop(settings))
+
     yield
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await scheduler_task
 
     if redis_client:
         await redis_client.aclose()
     await dispose_db()
     logger.info("shutdown_complete")
+
+
+async def _background_scheduler_loop(settings: Settings) -> None:
+    from apps.api.services.background_scheduler import BackgroundSchedulerService
+    from nova_core.models.database import get_session
+
+    poll_seconds = BackgroundSchedulerService.POLL_INTERVAL_SECONDS
+    logger.info("background_scheduler_started", poll_seconds=poll_seconds)
+    while True:
+        try:
+            async for session in get_session():
+                sched = BackgroundSchedulerService(session, settings)
+                await sched.recover_stale_running()
+                await sched.poll_and_dispatch()
+                await session.commit()
+                break
+        except asyncio.CancelledError:
+            logger.info("background_scheduler_stopped")
+            raise
+        except Exception as exc:
+            logger.warning("background_scheduler_tick_failed", error=str(exc))
+        await asyncio.sleep(poll_seconds)
 
 
 def _validate_startup(settings: Settings) -> None:
@@ -126,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(executions_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
+    app.include_router(background_tasks_router, prefix="/api/v1")
     app.include_router(pairing_router, prefix="/api/v1")
     app.include_router(runtime_router, prefix="/api/v1")
     app.include_router(scheduler_router, prefix="/api/v1")

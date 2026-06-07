@@ -404,3 +404,81 @@ class SchedulerTickResponse(BaseModel):
     task_count: int
     tasks: list[dict[str, Any]] = Field(default_factory=list)
     timestamp: str
+
+
+class BackgroundTaskCreateRequest(BaseModel):
+    task_type: str
+    title: str
+    prompt: str | None = None
+    project_root: str | None = None
+    schedule_kind: str
+    schedule_expression: str
+
+
+class BackgroundTaskResponse(BaseModel):
+    id: str
+    user_id: str
+    device_id: str
+    project_root: str | None
+    task_type: str
+    title: str
+    prompt: str | None
+    schedule_kind: str
+    schedule_expression: str
+    status: str
+    last_run_at: datetime | None
+    next_run_at: datetime | None
+    last_result_summary: str | None
+    last_error: str | None
+    run_count: int
+    failure_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BackgroundTaskListResponse(BaseModel):
+    tasks: list[BackgroundTaskResponse] = Field(default_factory=list)
+
+
+class BackgroundTaskRunResponse(BaseModel):
+    id: str
+    task_id: str
+    user_id: str
+    device_id: str
+    status: str
+    summary: str | None
+    error: str | None
+    evidence_json: dict[str, Any] | None
+    attempt: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+
+
+class BackgroundTaskRunListResponse(BaseModel):
+    runs: list[BackgroundTaskRunResponse] = Field(default_factory=list)
+
+
+class NotificationItemResponse(BaseModel):
+    id: str
+    user_id: str
+    device_id: str
+    notification_type: str
+    title: str
+    summary: str
+    task_id: str | None
+    read: bool
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    notifications: list[NotificationItemResponse] = Field(default_factory=list)
+    unread_count: int = 0
+
+
+class BackgroundSchedulerStatusResponse(BaseModel):
+    active: bool
+    active_tasks: int
+    failed_tasks: int
+    due_tasks: int
+    unread_notifications: int = 0

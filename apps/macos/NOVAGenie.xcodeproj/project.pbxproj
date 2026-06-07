@@ -39,6 +39,8 @@
 		718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */; };
 		06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */; };
 		444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */; };
+		C3D4E5F60718293A4B5C6D7E /* BackgroundTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F60718293A4B5C6D7E8F /* BackgroundTasksView.swift */; };
+		E5F60718293A4B5C6D7E8F90 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60718293A4B5C6D7E8F901 /* NotificationsView.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* ApprovalQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* ApprovalQueueView.swift */; };
 		05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */; };
 		E24175191E986238B69E408E /* MacAgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */; };
@@ -99,6 +101,8 @@
 		55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactNOVAWindowRootView.swift"; sourceTree = "<group>"; };
 		AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompactPairingView.swift"; sourceTree = "<group>"; };
 		D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CompanionInboxView.swift"; sourceTree = "<group>"; };
+		D4E5F60718293A4B5C6D7E8F /* BackgroundTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/BackgroundTasksView.swift"; sourceTree = "<group>"; };
+		F60718293A4B5C6D7E8F901 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/NotificationsView.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A4B5C6D /* ApprovalQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ApprovalQueueView.swift"; sourceTree = "<group>"; };
 		BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/GenieChatView.swift"; sourceTree = "<group>"; };
 		BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/MacAgentsView.swift"; sourceTree = "<group>"; };
@@ -172,6 +176,8 @@
 				55EF013364DC6F7ACE80F9ED /* CompactNOVAWindowRootView.swift */,
 				AD06C10BD6F2D75B58573FEB /* CompactPairingView.swift */,
 				D89F615C31376C7ABDF2FA5F /* CompanionInboxView.swift */,
+				D4E5F60718293A4B5C6D7E8F /* BackgroundTasksView.swift */,
+				F60718293A4B5C6D7E8F901 /* NotificationsView.swift */,
 				B2C3D4E5F60718293A4B5C6D /* ApprovalQueueView.swift */,
 				BE7C4A0C3B3ABC923256D852 /* GenieChatView.swift */,
 				BC63AF4D8B80C68DDD20DFF4 /* MacAgentsView.swift */,
@@ -343,6 +349,8 @@
 				718233A3AD92123173F8624C /* CompactNOVAWindowRootView.swift in Sources */,
 				06FE0BEC362F024E550E5F3F /* CompactPairingView.swift in Sources */,
 				444E2E1137532527157A6AEB /* CompanionInboxView.swift in Sources */,
+				C3D4E5F60718293A4B5C6D7E /* BackgroundTasksView.swift in Sources */,
+				E5F60718293A4B5C6D7E8F90 /* NotificationsView.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* ApprovalQueueView.swift in Sources */,
 				05359B23CE91147500A8DE94 /* GenieChatView.swift in Sources */,
 				E24175191E986238B69E408E /* MacAgentsView.swift in Sources */,
