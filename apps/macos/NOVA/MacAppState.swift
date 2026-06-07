@@ -30,6 +30,7 @@ final class MacAppState: ObservableObject {
     @Published var providerBadge = "local"
     @Published var localModelStatusMessage: String?
     @Published var activeProjectName: String?
+    @Published var pendingToolIntent: String?
     @Published var taskTimeline: [MacTaskTimelineEntry] = []
     @Published var schedulerActive = false
     @Published var activeTasksCount = 0
@@ -255,7 +256,7 @@ final class MacAppState: ObservableObject {
             var message = chatMessages[index]
             message.content += delta
             chatMessages[index] = message
-        case .done(let intent, let blocked, let sessionId, let activeProject):
+        case .done(let intent, let blocked, let sessionId, let activeProject, let pendingToolIntent):
             var message = chatMessages[index]
             message.isStreaming = false
             message.blocked = blocked
@@ -268,6 +269,11 @@ final class MacAppState: ObservableObject {
                 activeProjectName = activeProject
             } else if intent == "set_project" {
                 Task { await refreshActiveProject() }
+            }
+            if let pendingToolIntent {
+                self.pendingToolIntent = pendingToolIntent
+            } else if intent == "pending_cancelled" || intent == "pending_expired" || intent == "safe_search" {
+                self.pendingToolIntent = nil
             }
             persistChatSnapshot()
         case .cancelled:
@@ -303,6 +309,13 @@ final class MacAppState: ObservableObject {
             }
             if let project = response.activeProject {
                 activeProjectName = project
+            }
+            if let pending = response.pendingToolIntent {
+                pendingToolIntent = pending
+            } else if response.intent == "pending_cancelled"
+                || response.intent == "pending_expired"
+                || response.intent == "safe_search" {
+                pendingToolIntent = nil
             }
         } catch {
             chatError = error.localizedDescription

@@ -469,6 +469,7 @@ struct MacChatResponse: Decodable {
     let taskId: String?
     let timeline: [MacTaskTimelineEntry]?
     let activeProject: String?
+    let pendingToolIntent: String?
     let unifiedDiff: String?
 }
 

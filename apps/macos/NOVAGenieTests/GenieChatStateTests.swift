@@ -38,10 +38,11 @@ final class GenieChatStateTests: XCTestCase {
                 intent: "set_project",
                 blocked: false,
                 sessionId: "sess-1",
-                activeProject: "nova"
+                activeProject: "nova",
+                pendingToolIntent: nil
             )
         )
-        if case .done(let intent, _, _, let activeProject) = event.kind {
+        if case .done(let intent, _, _, let activeProject, _) = event.kind {
             XCTAssertEqual(intent, "set_project")
             XCTAssertEqual(activeProject, "nova")
         } else {

@@ -183,6 +183,7 @@ class ChatResponse(BaseModel):
     approval_id: str | None = None
     risk_level: str | None = None
     active_project: str | None = None
+    pending_tool_intent: str | None = None
 
 
 class ApprovalRequestCreateBody(BaseModel):

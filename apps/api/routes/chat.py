@@ -46,6 +46,7 @@ async def chat(
         approval_id=result.get("approval_id"),
         risk_level=result.get("risk_level"),
         active_project=result.get("active_project"),
+        pending_tool_intent=result.get("pending_tool_intent"),
     )
 
 

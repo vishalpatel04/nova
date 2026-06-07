@@ -175,6 +175,7 @@ async def test_chat_search_downloads(
         del configured
         return [Path(r).resolve() for r in roots]
 
+    monkeypatch.setenv("HOME", str(personal_home))
     monkeypatch.setattr("nova_core.tools.search_scopes.expand_search_roots", _fake_search_roots)
     _device_id, token = paired_client_token
     auth_client.headers["Authorization"] = f"Bearer {token}"
@@ -216,7 +217,7 @@ async def test_chat_search_computer_prompt(
         json={"message": "search my computer for lund"},
     )
     assert resp.status_code == 200
-    assert "approved folders" in resp.json()["response"].lower()
+    assert "waiting for folder choice" in resp.json()["response"].lower()
 
 
 def test_demo_helpers_restore_present() -> None:

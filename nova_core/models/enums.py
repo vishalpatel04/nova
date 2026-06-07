@@ -247,3 +247,14 @@ class ReviewerVerdict(StrEnum):
     APPROVED_FOR_USER_REVIEW = "approved_for_user_review"
     NEEDS_REVISION = "needs_revision"
     BLOCKED = "blocked"
+
+
+class PendingToolIntentStatus(StrEnum):
+    PENDING = "pending"
+    CONSUMED = "consumed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+class PendingToolIntentType(StrEnum):
+    PERSONAL_SEARCH_SCOPE_CONFIRMATION = "personal_search.scope_confirmation"

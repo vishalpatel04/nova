@@ -6,6 +6,7 @@ import asyncio
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from apps.api.services.devices import DeviceService
 from apps.api.services.git_workflow import GitWorkflowService
 from apps.api.services.missions import MissionService
 from apps.api.services.notifications import NotificationService
+from apps.api.services.pending_tool_intents import PendingToolIntentService
 from apps.api.services.projects import ProjectService
 from apps.api.services.runtime import ChatSessionService, RuntimeTelemetryService
 from nova_core.auth.principal import Principal
@@ -36,7 +38,13 @@ from nova_core.capabilities.resolver import (
     resolve_chat_message,
 )
 from nova_core.devices.availability import get_worker_availability
-from nova_core.models.enums import BackgroundScheduleKind, BackgroundTaskType, MissionStatus
+from nova_core.models.enums import (
+    BackgroundScheduleKind,
+    BackgroundTaskType,
+    MissionStatus,
+    PendingToolIntentStatus,
+    PendingToolIntentType,
+)
 from nova_core.models.orm import Mission
 from nova_core.project.inspect import format_inspection, inspect_repo
 from nova_core.project.validation import pick_validation_command, run_validation_command
@@ -46,6 +54,11 @@ from nova_core.providers.stream_context import StreamCancelToken
 from nova_core.schemas.settings import Settings
 from nova_core.sentry.audit import record_audit_event
 from nova_core.tools.code_runtime import CodeRuntime
+from nova_core.tools.pending_search import (
+    parse_scope_confirmation_reply,
+    scope_confirmation_prompt,
+    unrelated_pending_message,
+)
 from nova_core.tools.personal_search import PersonalSearchTool, format_search_results
 from nova_core.tools.policy import BLOCKED_MESSAGE, ToolDecision, ToolPolicy
 from nova_core.tools.protected_paths import (
@@ -124,6 +137,7 @@ class ChatService:
         self._approval_svc = ApprovalRequestService(session, settings)
         self._last_task_meta: dict[str, Any] | None = None
         self._pending_active_project: str | None = None
+        self._pending_tool_intent_type: str | None = None
 
     async def handle_message(
         self,
@@ -207,6 +221,11 @@ class ChatService:
             "task_history": self._task_history,
         }.get(intent)
 
+        if handler and intent != "general":
+            await PendingToolIntentService(self.session).cancel_active_for_session(
+                principal, chat_session.id
+            )
+
         if handler:
             body = await cast(Callable[..., Awaitable[str]], handler)(
                 principal, args, routing=routing, session_id=chat_session.id
@@ -250,24 +269,7 @@ class ChatService:
                 await self._persist_assistant(sessions, chat_session, response)
                 return response
             await self._maybe_audit_command(principal, intent, args, body)
-            extra: dict[str, Any] = {}
-            if intent == "set_project" and self._pending_active_project:
-                extra["active_project"] = self._pending_active_project
-                self._pending_active_project = None
-            if intent == "coding_task" and self._last_task_meta:
-                extra = {
-                    k: self._last_task_meta.get(k)
-                    for k in (
-                        "task_id",
-                        "timeline",
-                        "approval_id",
-                        "unified_diff",
-                        "patch_preview",
-                        "active_project",
-                    )
-                    if self._last_task_meta.get(k) is not None
-                }
-                self._last_task_meta = None
+            extra = self._collect_handler_extra(intent)
             response = self._response(
                 body,
                 intent=intent,
@@ -277,6 +279,16 @@ class ChatService:
             )
             await self._persist_assistant(sessions, chat_session, response)
             return response
+
+        pending_response = await self._try_resolve_pending_tool_intent(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if pending_response is not None:
+            await self._persist_assistant(sessions, chat_session, pending_response)
+            return pending_response
 
         inference = await self._provider_runtime.infer(
             InferenceRequest(prompt=text, intent=intent, stream=stream)
@@ -397,6 +409,11 @@ class ChatService:
             "task_history": self._task_history,
         }.get(intent)
 
+        if handler and intent != "general":
+            await PendingToolIntentService(self.session).cancel_active_for_session(
+                principal, chat_session.id
+            )
+
         if handler:
             body = await cast(Callable[..., Awaitable[str]], handler)(
                 principal, args, routing=routing, session_id=chat_session.id
@@ -421,10 +438,7 @@ class ChatService:
                 )
             else:
                 await self._maybe_audit_command(principal, intent, args, body)
-                extra: dict[str, Any] = {}
-                if intent == "set_project" and self._pending_active_project:
-                    extra["active_project"] = self._pending_active_project
-                    self._pending_active_project = None
+                extra = self._collect_handler_extra(intent)
                 response = self._response(
                     body,
                     intent=intent,
@@ -433,6 +447,20 @@ class ChatService:
                     **extra,
                 )
             async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        pending_response = await self._try_resolve_pending_tool_intent(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if pending_response is not None:
+            async for event in self._emit_full_response(sessions, chat_session, pending_response):
                 if cancel and cancel.cancelled:
                     yield {"event": "cancelled", "data": {}}
                     return
@@ -518,6 +546,7 @@ class ChatService:
                 "token_usage": response.get("token_usage"),
                 "routing": response.get("routing"),
                 "active_project": response.get("active_project"),
+                "pending_tool_intent": response.get("pending_tool_intent"),
             },
         }
 
@@ -602,11 +631,12 @@ class ChatService:
             if lowered_remainder.startswith("my computer for "):
                 pattern = remainder[len("my computer for ") :].strip()
                 return "search_computer_prompt", {"pattern": pattern}
-            parts = remainder.split(" in ", maxsplit=1)
-            pattern = parts[0].strip()
-            if len(parts) > 1:
-                path = parts[1].strip()
+            in_match = re.match(r"^(.+?)\s+in\s+(.+)$", remainder, re.I)
+            if in_match:
+                pattern = in_match.group(1).strip()
+                path = in_match.group(2).strip()
                 return "safe_search", {"pattern": pattern, "path": path, "scope": "path"}
+            pattern = remainder.strip()
             return "safe_search", {"pattern": pattern, "scope": "active_project"}
 
         if lowered in {"repo analysis", "analyze repo", "analyse repo"}:
@@ -778,6 +808,136 @@ class ChatService:
 
         return "general", {}
 
+    def _collect_handler_extra(self, intent: str) -> dict[str, Any]:
+        extra: dict[str, Any] = {}
+        if intent == "set_project" and self._pending_active_project:
+            extra["active_project"] = self._pending_active_project
+            self._pending_active_project = None
+        if intent == "coding_task" and self._last_task_meta:
+            for key in (
+                "task_id",
+                "timeline",
+                "approval_id",
+                "unified_diff",
+                "patch_preview",
+                "active_project",
+            ):
+                value = self._last_task_meta.get(key)
+                if value is not None:
+                    extra[key] = value
+            self._last_task_meta = None
+        if self._pending_tool_intent_type:
+            extra["pending_tool_intent"] = self._pending_tool_intent_type
+            self._pending_tool_intent_type = None
+        return extra
+
+    async def _try_resolve_pending_tool_intent(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        pending_svc = PendingToolIntentService(self.session)
+        parsed = parse_scope_confirmation_reply(text)
+        record = await pending_svc.get_active(principal, session_id)
+
+        if record is None:
+            if parsed.action != "unrelated":
+                expired = await pending_svc.get_recently_expired(principal, session_id)
+                if expired is not None and expired.consumed_at is not None:
+                    consumed_at = expired.consumed_at
+                    if consumed_at.tzinfo is None:
+                        consumed_at = consumed_at.replace(tzinfo=UTC)
+                    if consumed_at >= datetime.now(UTC) - timedelta(minutes=2):
+                        return self._response(
+                            "That search request expired. Please start again.",
+                            intent="pending_expired",
+                            routing=routing,
+                            session_id=session_id,
+                        )
+            return None
+
+        if record.intent_type != PendingToolIntentType.PERSONAL_SEARCH_SCOPE_CONFIRMATION.value:
+            return None
+
+        query = pending_svc.payload_query(record)
+
+        if parsed.action == "cancel":
+            await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
+            return self._response(
+                "Search cancelled.",
+                intent="pending_cancelled",
+                routing=routing,
+                session_id=session_id,
+            )
+
+        if parsed.action == "unrelated":
+            return self._response(
+                unrelated_pending_message(query),
+                intent="pending_scope_confirmation",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=record.intent_type,
+            )
+
+        if parsed.action == "all_approved":
+            await pending_svc.consume(record)
+            body = await self._safe_search(
+                principal,
+                {"pattern": query, "scope": "all_approved"},
+                routing=routing,
+                session_id=session_id,
+            )
+            return self._finalize_pending_search_response(
+                body, routing=routing, session_id=session_id
+            )
+
+        if parsed.action == "scope_path" and parsed.path:
+            if is_protected_path(parsed.path):
+                return self._response(
+                    PROTECTED_PATH_MESSAGE,
+                    intent="blocked",
+                    routing=routing,
+                    blocked=True,
+                    session_id=session_id,
+                )
+            await pending_svc.consume(record)
+            body = await self._safe_search(
+                principal,
+                {"pattern": query, "path": parsed.path, "scope": "path"},
+                routing=routing,
+                session_id=session_id,
+            )
+            return self._finalize_pending_search_response(
+                body, routing=routing, session_id=session_id
+            )
+
+        return None
+
+    def _finalize_pending_search_response(
+        self,
+        body: str,
+        *,
+        routing: Any | None,
+        session_id: str,
+    ) -> dict[str, Any]:
+        if body.startswith("Blocked:"):
+            return self._response(
+                body,
+                intent="blocked",
+                routing=routing,
+                blocked=True,
+                session_id=session_id,
+            )
+        return self._response(
+            body,
+            intent="safe_search",
+            routing=routing,
+            session_id=session_id,
+        )
+
     async def _system_status(self, _principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
         availability = await get_worker_availability(self.session, self.settings)
         active = await self.session.execute(
@@ -918,16 +1078,27 @@ class ChatService:
 
     async def _search_computer_prompt(
         self,
-        _principal: Principal,
+        principal: Principal,
         args: dict[str, str],
+        *,
+        session_id: str | None = None,
         **_kw: Any,
     ) -> str:
         pattern = args.get("pattern", "").strip()
-        return (
-            f"Search all approved folders: Desktop, Documents, Downloads, Projects?\n\n"
-            f'To search for "{pattern}" across those folders, say:\n'
-            f"search all approved folders for {pattern}"
+        if not pattern:
+            return "Usage: search my computer for <pattern>"
+        if not session_id:
+            return scope_confirmation_prompt(pattern)
+        pending_svc = PendingToolIntentService(self.session)
+        await pending_svc.create_scope_confirmation(
+            principal,
+            session_id=session_id,
+            query=pattern,
         )
+        self._pending_tool_intent_type = (
+            PendingToolIntentType.PERSONAL_SEARCH_SCOPE_CONFIRMATION.value
+        )
+        return scope_confirmation_prompt(pattern)
 
     async def _safe_search(
         self,
@@ -1801,6 +1972,7 @@ class ChatService:
         unified_diff: str | None = None,
         patch_preview: str | None = None,
         active_project: str | None = None,
+        pending_tool_intent: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
@@ -1821,6 +1993,8 @@ class ChatService:
             payload["patch_preview"] = patch_preview
         if active_project:
             payload["active_project"] = active_project
+        if pending_tool_intent:
+            payload["pending_tool_intent"] = pending_tool_intent
         if token_usage is not None:
             payload["token_usage"] = token_usage
         if routing is not None:
