@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     nova_local_model: str = Field(default="", alias="NOVA_LOCAL_MODEL")
     nova_coder_model: str = Field(default="", alias="NOVA_CODER_MODEL")
     nova_long_context_model: str = Field(default="", alias="NOVA_LONG_CONTEXT_MODEL")
+    nova_demo_pacing: bool = Field(default=False, alias="NOVA_DEMO_PACING")
+    nova_gmail_enabled: bool = Field(default=False, alias="NOVA_GMAIL_ENABLED")
     nova_n8n_base_url: str = Field(default="", alias="NOVA_N8N_BASE_URL")
     nova_openclaw_base_url: str = Field(default="", alias="NOVA_OPENCLAW_BASE_URL")
     nova_shortcuts_enabled: bool = Field(default=False, alias="NOVA_SHORTCUTS_ENABLED")

@@ -98,12 +98,14 @@ class AgentMissionService:
         run_npm: bool = True,
         clean_workspace: bool = False,
         start_preview: bool = True,
+        assumptions: list[str] | None = None,
     ) -> AgentMission:
         return self.runner.run_mission(
             user_request,
             run_npm=run_npm,
             clean_workspace=clean_workspace,
             start_preview=start_preview,
+            assumptions=assumptions,
         )
 
     def get_mission(self, mission_id: str) -> AgentMission | None:

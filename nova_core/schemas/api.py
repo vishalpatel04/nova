@@ -190,6 +190,7 @@ class ChatResponse(BaseModel):
     fallback_reason: str | None = None
     local_available: bool | None = None
     agent_os_mission: dict[str, Any] | None = None
+    orbit_email_draft: dict[str, Any] | None = None
 
 
 class ApprovalRequestCreateBody(BaseModel):

@@ -127,6 +127,12 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
             "approval_question": approval_question,
             "runtime": runtime,
             "deployment_status": report.get("deployment_status"),
+            "assumptions": report.get("assumptions", mission.artifacts.get("assumptions", [])),
+            "app_spec_summary": report.get(
+                "app_spec_summary", mission.artifacts.get("app_spec_summary")
+            ),
+            "files_written": report.get("files_written", mission.files_touched[:16]),
+            "validation_commands": report.get("validation_commands", []),
         },
         "actions": actions,
         "text": _short_text(mission),

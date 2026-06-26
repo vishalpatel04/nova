@@ -13,6 +13,11 @@ protocol CompactWindowCoordinating: AnyObject {
 
 @MainActor
 final class CompactWindowCoordinator: NSObject, CompactWindowCoordinating, NSWindowDelegate {
+    static let defaultWidth: CGFloat = 920
+    static let defaultHeight: CGFloat = 760
+    static let minimumWidth: CGFloat = 720
+    static let minimumHeight: CGFloat = 560
+
     let stableWindowIdentifier = "com.nova.macos.genie.compact"
     private(set) var createCount = 0
     private(set) var openCount = 0
@@ -39,8 +44,8 @@ final class CompactWindowCoordinator: NSObject, CompactWindowCoordinating, NSWin
         let window = NSWindow(contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(stableWindowIdentifier)
         window.title = "NOVA"
-        window.setContentSize(NSSize(width: 380, height: 460))
-        window.minSize = NSSize(width: 340, height: 380)
+        window.setContentSize(NSSize(width: Self.defaultWidth, height: Self.defaultHeight))
+        window.minSize = NSSize(width: Self.minimumWidth, height: Self.minimumHeight)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false

@@ -195,10 +195,11 @@ struct GenieChatView: View {
                         .padding(.leading, 4)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
             }
-            .frame(minHeight: compact ? 180 : 280, maxHeight: .infinity)
+            .frame(minHeight: compact ? 320 : 420, maxHeight: .infinity)
             .onChange(of: appState.chatMessages.count) { _, _ in
                 scrollToBottom(proxy: proxy)
             }
@@ -247,7 +248,7 @@ struct GenieChatView: View {
 
                 TextEditor(text: $appState.chatDraft)
                     .font(.body)
-                    .frame(minHeight: 36, maxHeight: compact ? 56 : 88)
+                    .frame(minHeight: 44, maxHeight: compact ? 72 : 120)
                     .scrollContentBackground(.hidden)
                     .background(Color.secondary.opacity(0.08))
                     .cornerRadius(8)
@@ -259,7 +260,8 @@ struct GenieChatView: View {
                     }
 
                 Button("Send") { sendMessage() }
-                    .keyboardShortcut(.return, modifiers: [])
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
                     .disabled(
                         appState.isChatSending
                             || appState.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -423,6 +425,10 @@ private struct ChatBubble: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
+                } else if let email = message.orbitEmailDraft {
+                    OrbitEmailCardView(email: email) { action in
+                        OrbitEmailActionHandler.perform(action, appState: appState)
+                    }
                 } else if shouldCollapse {
                     Text(expanded ? contentText : collapsedText)
                         .font(.caption)
@@ -439,7 +445,7 @@ private struct ChatBubble: View {
                         .textSelection(.enabled)
                 }
             }
-            .padding(message.agentOSMission == nil ? 10 : 0)
+            .padding(message.agentOSMission == nil && message.orbitEmailDraft == nil ? 10 : 0)
             .foregroundStyle(foreground)
             .background { bubbleBackground }
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -455,7 +461,7 @@ private struct ChatBubble: View {
 
     @ViewBuilder
     private var bubbleBackground: some View {
-        if message.agentOSMission == nil {
+        if message.agentOSMission == nil && message.orbitEmailDraft == nil {
             background
         }
     }
@@ -468,7 +474,7 @@ private struct ChatBubble: View {
     }
 
     private var shouldCollapse: Bool {
-        message.agentOSMission == nil && contentText.count > 700
+        message.agentOSMission == nil && message.orbitEmailDraft == nil && contentText.count > 700
     }
 
     private var collapsedText: String {

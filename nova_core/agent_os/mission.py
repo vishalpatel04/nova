@@ -96,8 +96,11 @@ class AgentMissionRunner:
         run_npm: bool = True,
         clean_workspace: bool = False,
         start_preview: bool = True,
+        assumptions: list[str] | None = None,
     ) -> AgentMission:
         mission = self.create_mission(user_request)
+        if assumptions:
+            mission.artifacts["assumptions"] = assumptions
         mission.status = MissionStatus.RUNNING
         append_timeline(
             mission,
@@ -169,6 +172,13 @@ class AgentMissionRunner:
             return mission
 
         spec = build_app_spec(app_request)
+        mission.artifacts["app_spec_summary"] = {
+            "title": spec.title,
+            "description": spec.description,
+            "stack": spec.stack,
+            "components": list(spec.components),
+            "acceptance_criteria": list(spec.acceptance_criteria),
+        }
         project_path = project_path_for_request(app_request)
 
         append_timeline(
@@ -357,6 +367,10 @@ class AgentMissionRunner:
             "run_command": build.run_command,
             "deployment_status": "approval required" if build.build_passed else "blocked",
             "evidence_log": str(self.store._path(mission.mission_id)),
+            "assumptions": mission.artifacts.get("assumptions", []),
+            "app_spec_summary": mission.artifacts.get("app_spec_summary"),
+            "files_written": build.files_written[:16],
+            "validation_commands": [entry["command"] for entry in mission.commands_run],
         }
         prime_close = (
             "App ready. Package this app? yes/no"

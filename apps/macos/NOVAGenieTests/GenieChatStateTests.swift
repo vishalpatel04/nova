@@ -73,10 +73,26 @@ final class GenieChatStateTests: XCTestCase {
                 selectedProvider: "local",
                 selectedModel: "qwen2.5:7b",
                 fallbackReason: nil,
-                localAvailable: true
+                localAvailable: true,
+                agentOSMission: nil,
+                orbitEmailDraft: nil
             )
         )
-        if case .done(let response, let intent, _, _, let activeProject, _, let runtimeMode, _, _, _, let localAvailable) = event.kind {
+        if case .done(
+            let response,
+            let intent,
+            _,
+            _,
+            let activeProject,
+            _,
+            let runtimeMode,
+            _,
+            _,
+            _,
+            let localAvailable,
+            _,
+            _
+        ) = event.kind {
             XCTAssertEqual(response, "hello")
             XCTAssertEqual(intent, "set_project")
             XCTAssertEqual(activeProject, "nova")
@@ -85,6 +101,13 @@ final class GenieChatStateTests: XCTestCase {
         } else {
             XCTFail("expected done event")
         }
+    }
+
+    func testCompactWindowDefaultSize() {
+        XCTAssertEqual(CompactWindowCoordinator.defaultWidth, 920)
+        XCTAssertEqual(CompactWindowCoordinator.defaultHeight, 760)
+        XCTAssertEqual(CompactWindowCoordinator.minimumWidth, 720)
+        XCTAssertEqual(CompactWindowCoordinator.minimumHeight, 560)
     }
 }
 

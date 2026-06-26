@@ -1,0 +1,69 @@
+"""Structured Orbit email payloads for NOVAGenie."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from nova_core.orbit.email_draft import EmailDraft
+
+
+def build_orbit_email_chat_payload(draft: EmailDraft) -> dict[str, Any]:
+    actions: list[dict[str, Any]] = []
+    if draft.status == "awaiting_send_approval":
+        actions.extend(
+            [
+                {
+                    "label": "Yes",
+                    "action": "approve_email_send",
+                    "draft_id": draft.draft_id,
+                },
+                {
+                    "label": "No",
+                    "action": "skip_email_send",
+                    "draft_id": draft.draft_id,
+                },
+            ]
+        )
+    actions.append(
+        {
+            "label": "Copy Body",
+            "action": "copy_text",
+            "text": draft.body,
+        }
+    )
+    if draft.evidence_path:
+        actions.append(
+            {
+                "label": "Evidence",
+                "action": "copy_text",
+                "text": draft.evidence_path,
+            }
+        )
+    source_label = (
+        "Gmail draft" if draft.source == "gmail" else "Local artifact (Gmail not configured)"
+    )
+    short = f"Email draft ready for {draft.to}. Send this email?"
+    if draft.status == "skipped":
+        short = "Email send skipped."
+    if draft.status == "send_approved":
+        short = (
+            "Send approval recorded. "
+            "Gmail send integration is prepared but not enabled in this build."
+        )
+    return {
+        "type": "orbit_email_draft",
+        "draft_id": draft.draft_id,
+        "status": draft.status,
+        "result": {
+            "to": draft.to,
+            "subject": draft.subject,
+            "body_preview": draft.body[:1200],
+            "draft_source": source_label,
+            "evidence_log": draft.evidence_path,
+            "approval_question": "Send this email?"
+            if draft.status == "awaiting_send_approval"
+            else "",
+        },
+        "actions": actions,
+        "text": short,
+    }

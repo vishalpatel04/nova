@@ -1,6 +1,6 @@
 # NOVA Investor Demo Checklist
 
-This guide walks through the Agent OS investor demo inside the NOVA macOS app (NOVAGenie). The CLI remains available as a fallback.
+Premium Agent OS demo inside NOVAGenie chat — conversational spec, visible workflow, Gmail draft with approval gates.
 
 ## 1. Start services
 
@@ -8,16 +8,18 @@ This guide walks through the Agent OS investor demo inside the NOVA macOS app (N
 cd ~/Projects/nova
 make db-target
 make migrate
-make api   # or: docker compose up
+make api
 ```
 
-Open **NOVAGenie** from Xcode or the built `.app`.
+Optional demo pacing (reveals timeline steps gradually — real build still runs):
 
-## 2. Open NOVA chat
+```bash
+export NOVA_DEMO_PACING=true
+```
 
-Confirm the provider badge shows local/Ollama health. The chat panel uses a frosted glass command-centre style.
+Open **NOVAGenie** (920×760 default window).
 
-## 3. Build a landing page
+## 2. Landing page with clarification
 
 Type:
 
@@ -25,65 +27,59 @@ Type:
 build a landing page for SusCo
 ```
 
-Expected:
+NOVA shows a **Quick spec** plus 2–3 questions. Reply:
 
-- Agent timeline card: Prime → Archive → Forge → Product Planner → Architect → Frontend Engineer → QA → Code Reviewer → Deploy Engineer → Sentry
-- Build status **PASS**
-- **Open Preview** button with verified preview URL
-- Approval: **Deploy this app?** with **Yes** / **No**
+```
+use your best assumptions
+```
 
-## 4. Preview and decline deploy
+NOVA responds **Building with assumptions…** and shows the Agent OS mission card.
 
-1. Click **Open Preview** — landing page opens in the browser.
-2. Click **No** on deployment approval.
+## 3. Preview and deploy gate
+
+1. Click **Open Preview** — SusCo-branded landing page.
+2. Click **No** on deploy approval.
 3. Card updates to **Deployment skipped**.
 
-## 5. CLI calculator app
+## 4. Orbit email draft
 
 Type:
 
 ```
-create a simple command-line calculator app named arth
+draft an investor update email about this app
 ```
 
-Expected:
+NOVA shows an **Orbit Email Draft** card:
 
-- Timeline card with CLI validation (py_compile + smoke test **PASS**)
-- **Run** command shown (`python3 ...`)
-- **Package this app?** with **Yes** / **No**
-- No pasted Python script or “Save this as …” response
+- To / Subject / Body preview
+- Draft source: local artifact (Gmail not configured) or Gmail when enabled
+- **Send this email?** with **Yes** / **No**
 
-## 6. Safety gates (talking points)
+Click **No** — send skipped honestly (no fake Gmail send).
 
-- Agent OS app-build intents are routed **before** Qwen/Ollama — deterministic templates, no model required.
-- Sentry requires explicit approval for deploy/package.
-- External Vercel deploy is **not** auto-run in this build; **Yes** records approval honestly.
-- High-risk shell/exec intents remain blocked.
+## 5. Safety talking points
 
-## 7. Fallback CLI (if app UI fails)
+- App-build intents route **before** Qwen — deterministic templates.
+- Vague requests get spec clarification; specific requests build directly.
+- Deploy/package and email **send** require explicit approval.
+- Gmail send integration is prepared but not auto-enabled in this build.
+
+## 6. Fallback CLI
 
 ```bash
 scripts/nova mission "build a landing page for SusCo"
 scripts/nova timeline <mission_id>
-scripts/nova preview <mission_id>
-scripts/nova deploy <mission_id>   # after approve
+bash scripts/demo_investor_end_to_end.sh
 ```
 
-## 8. Automated demo scripts
+## 7. Automated demos
 
 ```bash
+bash scripts/demo_investor_end_to_end.sh
 bash scripts/demo_novagenie_chat_agent_os.sh
-bash scripts/demo_agent_os_chat_app_routing.sh
 bash scripts/demo_agent_os_calculator.sh
-bash scripts/demo_agent_os_multi_app.sh
 ```
 
-## Model lanes (optional)
+## WhatsApp (future)
 
-```bash
-scripts/nova models
-NOVA_LOCAL_MODEL=qwen2.5:7b scripts/nova models
-scripts/nova pull-model qwen2.5:7b   # explicit only
-```
-
-Agent OS app building does **not** depend on model availability.
+WhatsApp support is planned via desktop automation with manual-send approval. For investor demos, **Gmail is primary** — API-based drafts, auditable evidence, and read-back.

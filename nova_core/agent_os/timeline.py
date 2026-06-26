@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from nova_core.agent_os.models import AgentMission, MissionStatus, TimelineEvent, utc_now_iso
+
+_DEMO_PACE_SECONDS = 0.35
+
+
+def _maybe_demo_pace() -> None:
+    try:
+        from nova_core.schemas.settings import get_settings
+
+        if get_settings().nova_demo_pacing:
+            time.sleep(_DEMO_PACE_SECONDS)
+    except Exception:
+        return
 
 
 def append_timeline(
@@ -25,6 +38,7 @@ def append_timeline(
         )
     )
     mission.updated_at = utc_now_iso()
+    _maybe_demo_pace()
 
 
 def format_timeline_cli(mission: AgentMission) -> str:

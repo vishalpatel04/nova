@@ -15,7 +15,7 @@ struct MenuBarView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 380, idealWidth: 420, maxWidth: 540)
+        .frame(minWidth: 720, idealWidth: 920, maxWidth: 1200)
         .task {
             await appState.pollWorkerHealth()
             await appState.refreshRuntimeStatus()
@@ -23,24 +23,38 @@ struct MenuBarView: View {
     }
 
     private var header: some View {
-        HStack {
-            MacNovaOrbView(size: 32)
-            VStack(alignment: .leading) {
+        HStack(spacing: 12) {
+            MacNovaOrbView(size: 36)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("NOVA")
-                    .font(.headline)
-                Text(appState.voiceMode.displayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .font(.headline.weight(.semibold))
+                HStack(spacing: 6) {
+                    modePill("Agent OS")
+                    Text(appState.voiceMode.displayName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            Spacer()
+            Spacer(minLength: 8)
             ProviderStatusBadge(
                 healthy: appState.providerHealthy,
                 label: appState.providerBadge
             )
             WorkerHealthBadge(health: appState.workerHealth)
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private func modePill(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(MacDesignTokens.novaBlue.opacity(0.16))
+            .foregroundStyle(MacDesignTokens.novaBlue)
+            .clipShape(Capsule())
     }
 
     private var footer: some View {

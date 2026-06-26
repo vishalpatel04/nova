@@ -32,6 +32,7 @@ from apps.api.services.git_workflow import GitWorkflowService
 from apps.api.services.memory_kernel import MemoryKernelService
 from apps.api.services.missions import MissionService
 from apps.api.services.notifications import NotificationService
+from apps.api.services.orbit_email_service import OrbitEmailService
 from apps.api.services.pending_tool_intents import PendingToolIntentService
 from apps.api.services.projects import ProjectService
 from apps.api.services.runtime import (
@@ -71,6 +72,14 @@ from nova_core.models.enums import (
     PendingToolIntentType,
 )
 from nova_core.models.orm import ChatMessageRecord, Mission
+from nova_core.orbit.email_intent import parse_email_draft_request, resolve_email_send_intent
+from nova_core.orchestration.app_request import parse_app_request
+from nova_core.orchestration.app_spec_clarification import (
+    build_clarification_message,
+    is_assumption_continuation,
+    is_vague_app_request,
+    merge_request_with_answers,
+)
 from nova_core.project.inspect import format_inspection, inspect_repo
 from nova_core.project.validation import pick_validation_command, run_validation_command
 from nova_core.providers.router import ProviderConfig, ProviderRouter
@@ -183,6 +192,7 @@ class ChatService:
         self._last_task_meta: dict[str, Any] | None = None
         self._last_agent_mission_id: str | None = None
         self._last_agent_mission_meta: dict[str, Any] | None = None
+        self._last_orbit_email_meta: dict[str, Any] | None = None
         self._pending_active_project: str | None = None
         self._pending_tool_intent_type: str | None = None
 
@@ -259,6 +269,10 @@ class ChatService:
             "agent_os_deploy_no": self._agent_os_deploy_no,
             "agent_os_preview": self._agent_os_preview,
             "system_memory_status": self._system_memory_status,
+            "orbit_email_draft": self._orbit_email_draft,
+            "orbit_email_send_yes": self._orbit_email_send_yes,
+            "orbit_email_send_no": self._orbit_email_send_no,
+            "orbit_email_send_blocked": self._orbit_email_send_blocked,
         }
 
     async def handle_message(
@@ -283,6 +297,70 @@ class ChatService:
         if capability_response is not None:
             await self._persist_assistant(sessions, chat_session, capability_response)
             return capability_response
+
+        routing = self._router.route(text, intent="general")
+
+        pending_tool_response = await self._try_resolve_pending_tool_intent(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if pending_tool_response is not None:
+            await self._persist_assistant(sessions, chat_session, pending_tool_response)
+            return pending_tool_response
+
+        orbit_email_svc = OrbitEmailService(self.settings)
+        email_intent = resolve_email_send_intent(
+            text,
+            awaiting=orbit_email_svc.latest_awaiting_send() is not None,
+        )
+        if email_intent is not None:
+            intent_name, email_args = email_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, email_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                await self._persist_assistant(sessions, chat_session, response)
+                return response
+
+        deploy_intent = resolve_deployment_chat_intent(text)
+        if deploy_intent is not None:
+            intent_name, deploy_args = deploy_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, deploy_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                await self._persist_assistant(sessions, chat_session, response)
+                return response
+
+        app_spec_response = await self._try_resolve_pending_app_spec(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if app_spec_response is not None:
+            await self._persist_assistant(sessions, chat_session, app_spec_response)
+            return app_spec_response
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
@@ -422,6 +500,88 @@ class ChatService:
             async for event in self._emit_full_response(
                 sessions, chat_session, capability_response
             ):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        routing = self._router.route(text, intent="general")
+
+        pending_tool_response = await self._try_resolve_pending_tool_intent(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if pending_tool_response is not None:
+            async for event in self._emit_full_response(
+                sessions, chat_session, pending_tool_response
+            ):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        orbit_email_svc = OrbitEmailService(self.settings)
+        email_intent = resolve_email_send_intent(
+            text,
+            awaiting=orbit_email_svc.latest_awaiting_send() is not None,
+        )
+        if email_intent is not None:
+            intent_name, email_args = email_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, email_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                async for event in self._emit_full_response(sessions, chat_session, response):
+                    if cancel and cancel.cancelled:
+                        yield {"event": "cancelled", "data": {}}
+                        return
+                    yield event
+                return
+
+        deploy_intent = resolve_deployment_chat_intent(text)
+        if deploy_intent is not None:
+            intent_name, deploy_args = deploy_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, deploy_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                async for event in self._emit_full_response(sessions, chat_session, response):
+                    if cancel and cancel.cancelled:
+                        yield {"event": "cancelled", "data": {}}
+                        return
+                    yield event
+                return
+
+        app_spec_response = await self._try_resolve_pending_app_spec(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if app_spec_response is not None:
+            async for event in self._emit_full_response(sessions, chat_session, app_spec_response):
                 if cancel and cancel.cancelled:
                     yield {"event": "cancelled", "data": {}}
                     return
@@ -624,6 +784,13 @@ class ChatService:
                 "data": self._stream_done_payload(response),
             }
             return
+        if response.get("orbit_email_draft"):
+            await self._persist_assistant(sessions, chat_session, response)
+            yield {
+                "event": "done",
+                "data": self._stream_done_payload(response),
+            }
+            return
         chunk_size = 24
         for index in range(0, len(body), chunk_size):
             yield {"event": "token", "data": {"delta": body[index : index + chunk_size]}}
@@ -652,6 +819,8 @@ class ChatService:
         }
         if response.get("agent_os_mission"):
             payload["agent_os_mission"] = response["agent_os_mission"]
+        if response.get("orbit_email_draft"):
+            payload["orbit_email_draft"] = response["orbit_email_draft"]
         if response.get("task_id"):
             payload["task_id"] = response["task_id"]
         if response.get("timeline"):
@@ -700,6 +869,10 @@ class ChatService:
 
         if is_memory_status_request(text):
             return "memory_status", {}
+
+        email_draft = parse_email_draft_request(text)
+        if email_draft is not None:
+            return "orbit_email_draft", {"request": text.strip()}
 
         if is_agent_os_mission_request(text):
             return "agent_os_mission", {"request": text.strip()}
@@ -1022,10 +1195,9 @@ class ChatService:
         if any(lowered.startswith(t) or t in lowered for t in legacy_coding):
             return "coding_task", {"request": text}
 
-        if re.search(
-            r"\b(execute|delete|write file|send email|open browser|n8n)\b",
-            lowered,
-        ):
+        if re.search(r"\b(execute|delete|write file|open browser|n8n)\b", lowered):
+            return "blocked", {}
+        if re.search(r"\bsend email\b", lowered) and "draft" not in lowered:
             return "blocked", {}
 
         if re.search(r"\brun\b", lowered) and lowered not in {
@@ -1054,6 +1226,11 @@ class ChatService:
                 if value is not None:
                     extra[key] = value
             self._last_task_meta = None
+        if intent.startswith("orbit_email_") and self._last_orbit_email_meta:
+            extra["orbit_email_draft"] = self._last_orbit_email_meta
+            if self._last_orbit_email_meta.get("status") == "awaiting_send_approval":
+                extra["pending_tool_intent"] = "orbit_email_send"
+            self._last_orbit_email_meta = None
         if intent.startswith("agent_os_") and self._last_agent_mission_meta:
             extra["agent_os_mission"] = self._last_agent_mission_meta
             if self._last_agent_mission_meta.get("status") == "waiting_approval":
@@ -1560,10 +1737,157 @@ class ChatService:
             return (
                 "Usage: build a calculator app | build a todo app | build a landing page for <name>"
             )
+        app_request = parse_app_request(request)
+        if app_request is None:
+            app_request = parse_app_request(f"build a simple web app for {request}")
+        if app_request is None:
+            return "Could not parse app build request."
+        session_id = _kw.get("session_id")
+        if app_request.requires_clarification:
+            return app_request.clarification_message
+        if is_vague_app_request(app_request) and session_id:
+            pending_svc = PendingToolIntentService(self.session)
+            await pending_svc.create_app_spec_clarification(
+                principal,
+                session_id=session_id,
+                raw_request=request,
+                app_type=app_request.app_type,
+                app_name=app_request.app_name,
+                runtime=app_request.runtime,
+            )
+            self._pending_tool_intent_type = "agent_os_app_spec"
+            return build_clarification_message(app_request)
         svc = AgentMissionService(self.session, self.settings)
         mission = svc.run_mission(request, run_npm=True, clean_workspace=True, start_preview=True)
         self._store_agent_mission_payload(mission)
         return svc.mission_timeline_text(mission.mission_id)
+
+    async def _try_resolve_pending_app_spec(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        pending_svc = PendingToolIntentService(self.session)
+        record = await pending_svc.get_active(principal, session_id)
+        if record is None:
+            return None
+        if record.intent_type != PendingToolIntentType.APP_SPEC_CLARIFICATION.value:
+            return None
+        payload = pending_svc.payload_app_spec(record)
+        raw_request = payload["raw_request"]
+        app_request = parse_app_request(raw_request)
+        if app_request is None:
+            await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
+            return self._response(
+                "That app build request expired. Please start again.",
+                intent="pending_expired",
+                routing=routing,
+                session_id=session_id,
+            )
+        lowered = text.lower().strip()
+        if lowered in {"cancel", "stop", "never mind"}:
+            await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
+            return self._response(
+                "App build cancelled.",
+                intent="pending_cancelled",
+                routing=routing,
+                session_id=session_id,
+            )
+        use_assumptions = is_assumption_continuation(text)
+        if not use_assumptions and not text.strip():
+            return self._response(
+                build_clarification_message(app_request),
+                intent="agent_os_app_spec",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=record.intent_type,
+            )
+        enhanced, assumptions = merge_request_with_answers(
+            raw_request,
+            app_request,
+            text,
+            use_assumptions=use_assumptions,
+        )
+        await pending_svc.consume(record)
+        intro = (
+            "Great. Building with assumptions…"
+            if use_assumptions
+            else "Thanks — incorporating your guidance and building now…"
+        )
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.run_mission(
+            enhanced,
+            run_npm=True,
+            clean_workspace=True,
+            start_preview=True,
+            assumptions=assumptions,
+        )
+        self._store_agent_mission_payload(mission)
+        body = f"{intro}\n\n{svc.mission_timeline_text(mission.mission_id)}"
+        extra = self._collect_handler_extra("agent_os_mission")
+        return self._response(
+            body,
+            intent="agent_os_mission",
+            routing=routing,
+            session_id=session_id,
+            **extra,
+        )
+
+    async def _orbit_email_draft(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        request_text = args.get("request", "").strip()
+        parsed = parse_email_draft_request(request_text)
+        if parsed is None:
+            return "Usage: draft an investor update email about this app"
+        svc = OrbitEmailService(self.settings)
+        draft = svc.create_draft(parsed)
+        self._last_orbit_email_meta = svc.payload_for(draft)
+        payload = self._last_orbit_email_meta
+        return (
+            "Email draft ready.\n\n"
+            f"To: {draft.to}\n"
+            f"Subject: {draft.subject}\n\n"
+            f"{draft.body[:800]}\n\n"
+            f"Draft source: {payload['result']['draft_source']}\n"
+            "Send this email?"
+        )
+
+    async def _orbit_email_send_yes(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = OrbitEmailService(self.settings)
+        try:
+            draft = svc.approve_send()
+        except ValueError as exc:
+            return str(exc)
+        self._last_orbit_email_meta = svc.payload_for(draft)
+        return (
+            "Send approval recorded.\n"
+            "Gmail send integration is prepared but not enabled in this build."
+        )
+
+    async def _orbit_email_send_no(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = OrbitEmailService(self.settings)
+        try:
+            draft = svc.skip_send()
+        except ValueError as exc:
+            return str(exc)
+        self._last_orbit_email_meta = svc.payload_for(draft)
+        return "Email send skipped."
+
+    async def _orbit_email_send_blocked(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        return (
+            "Blocked: sending email requires a drafted message and explicit approval. "
+            "Try: draft an investor update email about this app"
+        )
 
     async def _agent_os_deploy_yes(
         self, principal: Principal, _args: dict[str, str], **_kw: Any
@@ -2827,6 +3151,7 @@ class ChatService:
         fallback_reason: str | None = None,
         local_available: bool | None = None,
         agent_os_mission: dict[str, Any] | None = None,
+        orbit_email_draft: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
@@ -2851,6 +3176,8 @@ class ChatService:
             payload["pending_tool_intent"] = pending_tool_intent
         if agent_os_mission:
             payload["agent_os_mission"] = agent_os_mission
+        if orbit_email_draft:
+            payload["orbit_email_draft"] = orbit_email_draft
         if token_usage is not None:
             payload["token_usage"] = token_usage
         if routing is not None:

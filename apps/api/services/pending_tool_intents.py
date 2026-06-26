@@ -95,6 +95,47 @@ class PendingToolIntentService:
         await self.session.flush()
         return record
 
+    async def create_app_spec_clarification(
+        self,
+        principal: Principal,
+        *,
+        session_id: str,
+        raw_request: str,
+        app_type: str,
+        app_name: str,
+        runtime: str = "web",
+    ) -> PendingToolIntent:
+        if not principal.device_id:
+            raise ValidationError("Device id required for pending tool intent")
+        await self.cancel_active_for_session(principal, session_id)
+        expires_at = _utc_now() + timedelta(minutes=PENDING_INTENT_TTL_MINUTES)
+        record = PendingToolIntent(
+            session_id=session_id,
+            user_id=principal.user_id,
+            device_id=principal.device_id,
+            intent_type=PendingToolIntentType.APP_SPEC_CLARIFICATION.value,
+            payload_json={
+                "raw_request": raw_request.strip()[:2000],
+                "app_type": app_type,
+                "app_name": app_name,
+                "runtime": runtime,
+            },
+            status=PendingToolIntentStatus.PENDING.value,
+            expires_at=expires_at,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        return record
+
+    def payload_app_spec(self, record: PendingToolIntent) -> dict[str, str]:
+        payload = record.payload_json or {}
+        return {
+            "raw_request": str(payload.get("raw_request", "")),
+            "app_type": str(payload.get("app_type", "generic")),
+            "app_name": str(payload.get("app_name", "App")),
+            "runtime": str(payload.get("runtime", "web")),
+        }
+
     async def _fetch_pending(
         self,
         principal: Principal,

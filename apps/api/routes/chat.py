@@ -53,6 +53,7 @@ async def chat(
         fallback_reason=result.get("fallback_reason"),
         local_available=result.get("local_available"),
         agent_os_mission=result.get("agent_os_mission"),
+        orbit_email_draft=result.get("orbit_email_draft"),
     )
 
 

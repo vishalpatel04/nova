@@ -531,6 +531,7 @@ struct MacChatResponse: Decodable {
     let fallbackReason: String?
     let localAvailable: Bool?
     let agentOsMission: AgentOSMissionPayload?
+    let orbitEmailDraft: OrbitEmailPayload?
 
     enum CodingKeys: String, CodingKey {
         case response, intent, blocked
@@ -550,6 +551,7 @@ struct MacChatResponse: Decodable {
         case fallbackReason = "fallback_reason"
         case localAvailable = "local_available"
         case agentOsMission = "agent_os_mission"
+        case orbitEmailDraft = "orbit_email_draft"
     }
 }
 

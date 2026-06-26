@@ -14,6 +14,7 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     var blocked: Bool
     var isStreaming: Bool
     var agentOSMission: AgentOSMissionPayload?
+    var orbitEmailDraft: OrbitEmailPayload?
 
     init(
         id: UUID = UUID(),
@@ -22,7 +23,8 @@ struct ChatMessage: Identifiable, Equatable, Codable {
         timestamp: Date = Date(),
         blocked: Bool = false,
         isStreaming: Bool = false,
-        agentOSMission: AgentOSMissionPayload? = nil
+        agentOSMission: AgentOSMissionPayload? = nil,
+        orbitEmailDraft: OrbitEmailPayload? = nil
     ) {
         self.id = id
         self.role = role
@@ -31,5 +33,6 @@ struct ChatMessage: Identifiable, Equatable, Codable {
         self.blocked = blocked
         self.isStreaming = isStreaming
         self.agentOSMission = agentOSMission
+        self.orbitEmailDraft = orbitEmailDraft
     }
 }

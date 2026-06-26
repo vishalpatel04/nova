@@ -287,13 +287,17 @@ final class MacAppState: ObservableObject {
             let selectedModel,
             let fallbackReason,
             let localAvailable,
-            let agentOSMission
+            let agentOSMission,
+            let orbitEmailDraft
         ):
             var message = chatMessages[index]
             message.isStreaming = false
             if let agentOSMission {
                 message.agentOSMission = agentOSMission
                 message.content = agentOSMission.text.isEmpty ? response : agentOSMission.text
+            } else if let orbitEmailDraft {
+                message.orbitEmailDraft = orbitEmailDraft
+                message.content = orbitEmailDraft.text.isEmpty ? response : orbitEmailDraft.text
             } else if !response.isEmpty {
                 message.content = response
             }
@@ -327,7 +331,8 @@ final class MacAppState: ObservableObject {
             if let pendingToolIntent {
                 self.pendingToolIntent = pendingToolIntent
             } else if intent == "pending_cancelled" || intent == "pending_expired" || intent == "safe_search"
-                || intent == "agent_os_deploy_yes" || intent == "agent_os_deploy_no" {
+                || intent == "agent_os_deploy_yes" || intent == "agent_os_deploy_no"
+                || intent == "orbit_email_send_yes" || intent == "orbit_email_send_no" {
                 self.pendingToolIntent = nil
             }
             Task { await refreshRecentChatSessions() }
@@ -348,21 +353,27 @@ final class MacAppState: ObservableObject {
             activeChatSessionId = response.sessionId ?? activeChatSessionId
             let role: ChatMessage.Role = response.blocked ? .error : .assistant
             if let index = chatMessages.firstIndex(where: { $0.id == assistantId }) {
-                let content = response.agentOsMission?.text ?? response.response
+                let content = response.agentOsMission?.text
+                    ?? response.orbitEmailDraft?.text
+                    ?? response.response
                 chatMessages[index] = ChatMessage(
                     id: assistantId,
                     role: role,
                     content: content,
                     blocked: response.blocked,
-                    agentOSMission: response.agentOsMission
+                    agentOSMission: response.agentOsMission,
+                    orbitEmailDraft: response.orbitEmailDraft
                 )
             } else {
                 chatMessages.append(
                     ChatMessage(
                         role: role,
-                        content: response.agentOsMission?.text ?? response.response,
+                        content: response.agentOsMission?.text
+                            ?? response.orbitEmailDraft?.text
+                            ?? response.response,
                         blocked: response.blocked,
-                        agentOSMission: response.agentOsMission
+                        agentOSMission: response.agentOsMission,
+                        orbitEmailDraft: response.orbitEmailDraft
                     )
                 )
             }
@@ -380,7 +391,9 @@ final class MacAppState: ObservableObject {
                 || response.intent == "pending_expired"
                 || response.intent == "safe_search"
                 || response.intent == "agent_os_deploy_yes"
-                || response.intent == "agent_os_deploy_no" {
+                || response.intent == "agent_os_deploy_no"
+                || response.intent == "orbit_email_send_yes"
+                || response.intent == "orbit_email_send_no" {
                 pendingToolIntent = nil
             }
             if let runtimeMode = response.runtimeMode {

@@ -644,6 +644,27 @@ li { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.5rem; padding: 0.
 
 def _landing_files(spec: AppSpec) -> FileMap:
     title = spec.title.replace(" Landing Page", "")
+    is_susco = "susco" in title.lower()
+    tagline = (
+        "Sustainable shopping, simplified."
+        if is_susco
+        else f"Discover what {title} can do — built with NOVA Agent OS."
+    )
+    lede = (
+        "SusCo helps eco-conscious shoppers discover sustainable products with confidence."
+        if is_susco
+        else f"{title} helps your audience understand your product and take action."
+    )
+    cta = "Shop sustainably" if is_susco else "Get started"
+    feature_one = (
+        "Curated sustainable catalog"
+        if is_susco
+        else "Fast setup with a polished hero and feature grid"
+    )
+    feature_two = (
+        "Transparent sourcing badges" if is_susco else "Responsive layout for desktop and mobile"
+    )
+    feature_three = "Investor-ready demo flow" if is_susco else "Clear CTA and credibility sections"
     return _scaffold(
         spec,
         {
@@ -651,45 +672,45 @@ def _landing_files(spec: AppSpec) -> FileMap:
   return (
     <main className="app landing">
       <section className="hero">
-        <p className="eyebrow">Built with NOVA Agent OS</p>
-        <h1>{title}</h1>
-        <p className="lede">A polished landing page scaffold for your startup demo.</p>
-        <button type="button">Get started</button>
+        <p className="eyebrow">{title}</p>
+        <h1>{tagline}</h1>
+        <p className="lede">{lede}</p>
+        <button type="button">{cta}</button>
       </section>
       <section className="features">
-        <h2>Features</h2>
+        <h2>Why {title}</h2>
         <div className="cards">
-          <article><h3>Fast setup</h3><p>Ship a credible demo in minutes.</p></article>
-          <article><h3>Responsive</h3><p>Looks great on desktop and mobile.</p></article>
-          <article><h3>Investor-ready</h3><p>Clean structure and modern styling.</p></article>
+          <article><h3>{feature_one}</h3><p>Designed for a premium first impression.</p></article>
+          <article><h3>{feature_two}</h3><p>Looks great on desktop and mobile.</p></article>
+          <article><h3>{feature_three}</h3><p>Built and validated by NOVA Agent OS.</p></article>
         </div>
       </section>
       <section className="how">
         <h2>How it works</h2>
         <ol>
-          <li>Describe your app idea to NOVA.</li>
-          <li>Agent OS generates and validates the project.</li>
-          <li>Preview locally, deploy when you approve.</li>
+          <li>Describe your product vision to NOVA.</li>
+          <li>Agent OS generates, validates, and previews the app.</li>
+          <li>Share the live preview with investors or customers.</li>
         </ol>
       </section>
       <section className="cta">
         <h2>Ready to launch {title}?</h2>
-        <button type="button">Book a demo</button>
+        <button type="button">{cta}</button>
       </section>
     </main>
   )
 }}
 """,
             "src/App.css": """:root { font-family: 'SF Pro Text', system-ui, sans-serif; color: #0f172a; }
-body { margin: 0; background: #f8fafc; }
-.landing { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
-.hero { text-align: center; padding: 4rem 1rem; background: linear-gradient(135deg, #dbeafe, #ede9fe); border-radius: 24px; }
-.eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; color: #4f46e5; }
-.lede { font-size: 1.15rem; max-width: 540px; margin: 0 auto 1.5rem; }
-.features .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
-article { background: white; border-radius: 16px; padding: 1rem; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }
+body { margin: 0; background: linear-gradient(180deg, #f0fdf4 0%, #f8fafc 40%, #ffffff 100%); }
+.landing { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+.hero { text-align: center; padding: 4rem 1rem; background: linear-gradient(135deg, #dcfce7, #dbeafe); border-radius: 28px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08); }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; color: #15803d; font-weight: 700; }
+.lede { font-size: 1.15rem; max-width: 620px; margin: 0 auto 1.5rem; color: #334155; }
+.features .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+article { background: white; border-radius: 18px; padding: 1.25rem; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); border: 1px solid rgba(15, 23, 42, 0.05); }
 .how, .cta { margin-top: 3rem; text-align: center; }
-button { border: none; border-radius: 999px; padding: 0.85rem 1.5rem; background: #2563eb; color: white; font-size: 1rem; cursor: pointer; }
+button { border: none; border-radius: 999px; padding: 0.9rem 1.6rem; background: #15803d; color: white; font-size: 1rem; font-weight: 600; cursor: pointer; box-shadow: 0 10px 24px rgba(21, 128, 61, 0.25); }
 """,
         },
     )

@@ -144,11 +144,11 @@ def resolve_chat_message(text: str) -> ActionResolution | None:
             risk_level=RiskLevel.CRITICAL,
         )
 
-    if "send email" in lowered or "gmail" in lowered:
+    if "send email" in lowered and "draft" not in lowered and "investor update" not in lowered:
         return ActionResolution(
             kind="blocked",
             capability=CapabilityName.AUTOMATION_RUN,
-            message="Blocked: email automation is not enabled yet.",
+            message="Blocked: use draft flow first, then approve sending explicitly.",
             action_summary="Send email",
             preview=text.strip()[:500],
             risk_level=RiskLevel.HIGH,
