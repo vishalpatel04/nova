@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("NOVA_ENV", "development")
 
+from apps.api.services.agent_mission_service import normalize_build_app_request
 from nova_core.agent_os.mission import AgentMissionRunner, MissionStore
 from nova_core.agent_os.registry import list_agents, list_forge_specialists
 from nova_core.agent_os.skills import list_skills
@@ -87,16 +88,40 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_mission(args: argparse.Namespace) -> int:
+def _run_mission_request(request: str, *, skip_npm: bool, clean: bool, start_preview: bool) -> int:
     runner = _runner()
-    mission = runner.run_mission(
-        args.request,
-        run_npm=not args.skip_npm,
-        clean_workspace=args.clean,
-    )
+    try:
+        mission = runner.run_mission(
+            request,
+            run_npm=not skip_npm,
+            clean_workspace=clean,
+            start_preview=start_preview,
+        )
+    except Exception as exc:
+        print(f"Mission failed: {exc.__class__.__name__}")
+        return 1
     print(runner.format_cli_output(mission))
     print(f"\nMission ID: {mission.mission_id}")
     return 0 if mission.final_report.get("build_status") != "FAIL" else 1
+
+
+def cmd_build_app(args: argparse.Namespace) -> int:
+    request = normalize_build_app_request(args.app_name)
+    return _run_mission_request(
+        request,
+        skip_npm=args.skip_npm,
+        clean=args.clean,
+        start_preview=not args.no_preview,
+    )
+
+
+def cmd_mission(args: argparse.Namespace) -> int:
+    return _run_mission_request(
+        args.request,
+        skip_npm=args.skip_npm,
+        clean=args.clean,
+        start_preview=not args.no_preview,
+    )
 
 
 def cmd_mission_status(args: argparse.Namespace) -> int:
@@ -104,12 +129,19 @@ def cmd_mission_status(args: argparse.Namespace) -> int:
     if mission is None:
         print(f"Mission not found: {args.mission_id}")
         return 1
-    print(json.dumps(mission.to_dict(), indent=2))
+    if args.json:
+        print(json.dumps(mission.to_dict(), indent=2))
+    else:
+        print(_runner().format_cli_output(mission))
     return 0
 
 
 def cmd_timeline(args: argparse.Namespace) -> int:
-    print(_runner().format_cli_output(_runner().store.load(args.mission_id)))  # type: ignore[arg-type]
+    mission = _runner().store.load(args.mission_id)
+    if mission is None:
+        print(f"Mission not found: {args.mission_id}")
+        return 1
+    print(_runner().format_cli_output(mission))
     return 0
 
 
@@ -122,14 +154,31 @@ def cmd_preview(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stop_preview(args: argparse.Namespace) -> int:
+    stopped = _runner().stop_preview(args.mission_id)
+    if stopped:
+        print(f"Preview stopped for mission {args.mission_id}")
+        return 0
+    print("No running preview found for this mission.")
+    return 1
+
+
 def cmd_approve(args: argparse.Namespace) -> int:
-    mission = _runner().approve_deployment(args.mission_id)
-    print(f"Approved deployment for {mission.mission_id}")
+    try:
+        mission = _runner().approve_deployment(args.mission_id)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    print(f"Approved deployment for {mission.final_report.get('app_name', mission.mission_id)}")
     return 0
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:
-    mission = _runner().deploy_mission(args.mission_id)
+    try:
+        mission = _runner().deploy_mission(args.mission_id)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
     print(mission.final_report.get("deployment_status", "unknown"))
     return 0
 
@@ -147,14 +196,23 @@ def main() -> int:
     search_p.add_argument("query")
     search_p.set_defaults(func=cmd_search)
 
+    build_p = sub.add_parser("build-app")
+    build_p.add_argument("app_name")
+    build_p.add_argument("--skip-npm", action="store_true")
+    build_p.add_argument("--clean", action="store_true", default=True)
+    build_p.add_argument("--no-preview", action="store_true")
+    build_p.set_defaults(func=cmd_build_app)
+
     mission_p = sub.add_parser("mission")
     mission_p.add_argument("request")
     mission_p.add_argument("--skip-npm", action="store_true")
     mission_p.add_argument("--clean", action="store_true", default=True)
+    mission_p.add_argument("--no-preview", action="store_true")
     mission_p.set_defaults(func=cmd_mission)
 
     ms_p = sub.add_parser("mission-status")
     ms_p.add_argument("mission_id")
+    ms_p.add_argument("--json", action="store_true")
     ms_p.set_defaults(func=cmd_mission_status)
 
     tl_p = sub.add_parser("timeline")
@@ -164,6 +222,10 @@ def main() -> int:
     prev_p = sub.add_parser("preview")
     prev_p.add_argument("mission_id")
     prev_p.set_defaults(func=cmd_preview)
+
+    stop_p = sub.add_parser("stop-preview")
+    stop_p.add_argument("mission_id")
+    stop_p.set_defaults(func=cmd_stop_preview)
 
     appr_p = sub.add_parser("approve")
     appr_p.add_argument("mission_id")

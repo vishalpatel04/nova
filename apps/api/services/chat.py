@@ -17,8 +17,10 @@ from apps.api.services.agent_mission_service import (
     AgentMissionService,
     is_agent_os_mission_request,
     is_memory_status_request,
+    is_preview_request,
     is_system_memory_status_request,
     parse_archive_search_query,
+    resolve_deployment_chat_intent,
 )
 from apps.api.services.agent_plans import AgentPlanService
 from apps.api.services.approvals import ApprovalRequestService
@@ -207,6 +209,17 @@ class ChatService:
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
 
+        if intent in {"agent_os_deploy_yes", "agent_os_deploy_no"}:
+            pending_response = await self._try_resolve_pending_tool_intent(
+                principal,
+                text,
+                chat_session.id,
+                routing=routing,
+            )
+            if pending_response is not None:
+                await self._persist_assistant(sessions, chat_session, pending_response)
+                return pending_response
+
         if intent == "help":
             response = self._response(
                 HELP_TEXT, intent=intent, routing=routing, session_id=chat_session.id
@@ -288,6 +301,9 @@ class ChatService:
             "agent_os_mission_status": self._agent_os_mission_status,
             "agent_os_timeline": self._agent_os_timeline,
             "agent_os_approve_deploy": self._agent_os_approve_deploy,
+            "agent_os_deploy_yes": self._agent_os_deploy_yes,
+            "agent_os_deploy_no": self._agent_os_deploy_no,
+            "agent_os_preview": self._agent_os_preview,
             "system_memory_status": self._system_memory_status,
         }.get(intent)
 
@@ -410,6 +426,23 @@ class ChatService:
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
+
+        if intent in {"agent_os_deploy_yes", "agent_os_deploy_no"}:
+            pending_response = await self._try_resolve_pending_tool_intent(
+                principal,
+                text,
+                chat_session.id,
+                routing=routing,
+            )
+            if pending_response is not None:
+                async for event in self._emit_full_response(
+                    sessions, chat_session, pending_response
+                ):
+                    if cancel and cancel.cancelled:
+                        yield {"event": "cancelled", "data": {}}
+                        return
+                    yield event
+                return
 
         if intent == "help":
             response = self._response(
@@ -690,6 +723,13 @@ class ChatService:
 
         if is_agent_os_mission_request(text):
             return "agent_os_mission", {"request": text.strip()}
+
+        deploy_intent = resolve_deployment_chat_intent(text)
+        if deploy_intent is not None:
+            return deploy_intent
+
+        if is_preview_request(text):
+            return "agent_os_preview", {}
 
         if lowered in {"show agent timeline", "agent timeline"}:
             return "agent_os_timeline", {}
@@ -1510,11 +1550,55 @@ class ChatService:
     ) -> str:
         request = args.get("request", "").strip()
         if not request:
-            return "Usage: build a calculator app, test it, preview it, and prepare deployment"
+            return (
+                "Usage: build a calculator app | build a todo app | build a landing page for <name>"
+            )
         svc = AgentMissionService(self.session, self.settings)
-        mission = svc.run_mission(request, run_npm=True, clean_workspace=True)
+        mission = svc.run_mission(request, run_npm=True, clean_workspace=True, start_preview=True)
         self._last_agent_mission_id = mission.mission_id
         return svc.mission_timeline_text(mission.mission_id)
+
+    async def _agent_os_deploy_yes(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.latest_awaiting_approval()
+        if mission is None:
+            return "No mission is awaiting deployment approval."
+        mission = svc.deploy_mission(mission.mission_id)
+        self._last_agent_mission_id = mission.mission_id
+        return (
+            f"Deployment approved and prepared for {mission.final_report.get('app_name', 'app')}.\n"
+            f"Status: {mission.final_report.get('deployment_status', 'unknown')}"
+        )
+
+    async def _agent_os_deploy_no(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.latest_awaiting_approval()
+        if mission is None:
+            return "No mission is awaiting deployment approval."
+        mission = svc.skip_deployment(mission.mission_id)
+        self._last_agent_mission_id = mission.mission_id
+        return "Deployment skipped. Your app remains available locally with preview."
+
+    async def _agent_os_preview(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        svc = AgentMissionService(self.session, self.settings)
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        mission = svc.get_mission(mission_id) if mission_id else None
+        if mission is None or not mission.preview_url:
+            latest = svc.runner.store.list_ids()
+            for mid in reversed(latest):
+                candidate = svc.get_mission(mid)
+                if candidate and candidate.preview_url:
+                    mission = candidate
+                    break
+        if mission is None or not mission.preview_url:
+            return "No verified preview URL for the latest app mission."
+        return f"Preview: {mission.preview_url}"
 
     async def _agent_os_mission_status(
         self, principal: Principal, _args: dict[str, str], **_kw: Any

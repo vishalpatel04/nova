@@ -15,6 +15,7 @@ from nova_core.agent_os.skills import list_skills
 from nova_core.agent_os.workspace import workspace_root
 from nova_core.memory.access_policy import AccessProfile
 from nova_core.memory.retrieval import format_retrieval_result
+from nova_core.orchestration.app_request import is_app_build_request, parse_app_request
 from nova_core.schemas.settings import Settings
 from nova_core.tools.personal_search import PersonalSearchTool
 
@@ -96,15 +97,20 @@ class AgentMissionService:
         *,
         run_npm: bool = True,
         clean_workspace: bool = False,
+        start_preview: bool = True,
     ) -> AgentMission:
         return self.runner.run_mission(
             user_request,
             run_npm=run_npm,
             clean_workspace=clean_workspace,
+            start_preview=start_preview,
         )
 
     def get_mission(self, mission_id: str) -> AgentMission | None:
         return self.runner.store.load(mission_id)
+
+    def latest_awaiting_approval(self) -> AgentMission | None:
+        return self.runner.latest_awaiting_approval()
 
     def mission_timeline_text(self, mission_id: str) -> str:
         mission = self.get_mission(mission_id)
@@ -115,8 +121,14 @@ class AgentMissionService:
     def approve_deployment(self, mission_id: str) -> AgentMission:
         return self.runner.approve_deployment(mission_id)
 
+    def skip_deployment(self, mission_id: str) -> AgentMission:
+        return self.runner.skip_deployment(mission_id)
+
     def deploy_mission(self, mission_id: str) -> AgentMission:
         return self.runner.deploy_mission(mission_id)
+
+    def stop_preview(self, mission_id: str) -> bool:
+        return self.runner.stop_preview(mission_id)
 
     @staticmethod
     def list_agent_catalog() -> dict[str, Any]:
@@ -168,15 +180,18 @@ def parse_archive_search_query(text: str) -> str | None:
 
 
 def is_agent_os_mission_request(text: str) -> bool:
-    lowered = text.lower().strip()
-    triggers = (
-        "build a calculator app",
-        "create a calculator app",
-        "make a calculator app",
-        "build a calculator app and deploy it",
-        "create a web app",
-    )
-    return any(t in lowered for t in triggers)
+    return is_app_build_request(text)
+
+
+def normalize_build_app_request(short_name: str) -> str:
+    """Turn CLI `build-app` shorthand into a natural mission request."""
+    cleaned = short_name.strip()
+    lowered = cleaned.lower()
+    if parse_app_request(f"build {cleaned}") is not None:
+        return f"build {cleaned}"
+    if "landing" in lowered:
+        return f"build a landing page for {cleaned.replace('landing page for', '').strip()}"
+    return f"build a {cleaned}"
 
 
 def is_memory_status_request(text: str) -> bool:
@@ -192,3 +207,31 @@ def is_system_memory_status_request(text: str) -> bool:
         "ram status",
         "memory usage",
     }
+
+
+_DEPLOY_YES = frozenset({"yes", "deploy it", "approve deployment", "approve deploy"})
+_DEPLOY_NO = frozenset({"no", "don't deploy", "dont deploy", "not now"})
+
+
+def resolve_deployment_chat_intent(text: str) -> tuple[str, dict[str, str]] | None:
+    lowered = text.lower().strip()
+    awaiting = AgentMissionRunner().latest_awaiting_approval()
+
+    if lowered in _DEPLOY_YES:
+        if awaiting is not None:
+            return "agent_os_deploy_yes", {}
+        if lowered in {"approve deployment", "approve deploy", "deploy it"}:
+            return "agent_os_approve_deploy", {}
+        return None
+
+    if lowered in _DEPLOY_NO and awaiting is not None:
+        return "agent_os_deploy_no", {}
+
+    if lowered == "deploy it" and awaiting is not None:
+        return "agent_os_deploy_yes", {}
+
+    return None
+
+
+def is_preview_request(text: str) -> bool:
+    return text.lower().strip() in {"preview it", "show preview", "open preview"}

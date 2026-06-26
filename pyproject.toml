@@ -60,6 +60,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 "apps/api/auth.py" = ["B008"]
 "apps/worker/main.py" = ["SIM105"]
 "nova_core/orchestration/app_builder.py" = ["E501"]
+"nova_core/orchestration/templates.py" = ["E501"]
+"nova_core/orchestration/preview.py" = ["E501"]
 "nova_core/agent_os/prime.py" = ["E501"]
 "tests/test_*.py" = ["E501", "SIM117", "B017"]
 
