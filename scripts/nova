@@ -247,6 +247,92 @@ def cmd_deploy(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gmail_status(_: argparse.Namespace) -> int:
+    from apps.api.services.gmail_oauth_service import GmailOAuthService
+
+    status = GmailOAuthService(Settings()).status()
+    print(f"configured: {'yes' if status.get('configured') else 'no'}")
+    print(f"client_configured: {'yes' if status.get('client_configured') else 'no'}")
+    if status.get("account_email"):
+        print(f"account: {status['account_email']}")
+    print("scopes:")
+    for scope in status.get("scopes", []):
+        print(f"  - {scope}")
+    print(f"token_location: {status.get('token_location')}")
+    return 0
+
+
+def cmd_gmail_auth(_: argparse.Namespace) -> int:
+    from apps.api.services.gmail_oauth_service import GmailOAuthService
+
+    return GmailOAuthService(Settings()).start_auth_flow()
+
+
+def cmd_gmail_disconnect(_: argparse.Namespace) -> int:
+    from apps.api.services.gmail_oauth_service import GmailOAuthService
+
+    GmailOAuthService(Settings()).disconnect()
+    print("Gmail disconnected.")
+    return 0
+
+
+def cmd_gmail_test_draft(args: argparse.Namespace) -> int:
+    from apps.api.services.gmail_draft_service import GmailDraftService
+
+    settings = Settings()
+    service = GmailDraftService(settings)
+    if not service.is_configured():
+        print("Gmail is not connected. Run: nova gmail auth")
+        return 1
+    to = args.to or settings.nova_default_user_id + "@example.com"
+    subject = "[NOVA TEST] Draft verification"
+    body = "This is a NOVA Gmail test draft. It is safe to delete."
+    source, draft_id = service.create_draft(to=to, subject=subject, body=body)
+    print(f"created {source} draft: {draft_id}")
+    return 0
+
+
+async def _voice_transcript_once(transcript: str, *, session_id: str | None) -> int:
+    from nova_core.voice.pipeline import route_voice_transcript, submit_voice_command
+
+    command, wake = route_voice_transcript(transcript)
+    if not command:
+        print("No command detected after wake phrase.")
+        return 1
+    if wake:
+        print(f"wake: {wake}")
+    print(f"command: {command}")
+    data = await submit_voice_command(command, session_id=session_id)
+    print(data.get("response", data))
+    return 0
+
+
+def cmd_voice(args: argparse.Namespace) -> int:
+    if args.transcript:
+        return asyncio.run(_voice_transcript_once(args.transcript, session_id=args.session_id))
+    print(
+        "NOVA voice mode\n"
+        "  --transcript 'hey nova build a todo app called voice tasks'\n"
+        "  --push-to-talk (stdin lines)\n"
+        "  --debug prints wake parsing\n"
+    )
+    if args.push_to_talk:
+        import sys
+
+        for line in sys.stdin:
+            text = line.strip()
+            if not text:
+                continue
+            from nova_core.voice.wake_word import parse_wake_command
+
+            if args.debug:
+                parsed = parse_wake_command(text)
+                print(f"debug wake={parsed.wake_detected} command={parsed.command!r}")
+            asyncio.run(_voice_transcript_once(text, session_id=args.session_id))
+        return 0
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="nova", description="NOVA Agent OS CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -302,6 +388,23 @@ def main() -> int:
     dep_p = sub.add_parser("deploy")
     dep_p.add_argument("mission_id")
     dep_p.set_defaults(func=cmd_deploy)
+
+    gmail_p = sub.add_parser("gmail")
+    gmail_sub = gmail_p.add_subparsers(dest="gmail_command", required=True)
+    gmail_sub.add_parser("status").set_defaults(func=cmd_gmail_status)
+    gmail_sub.add_parser("auth").set_defaults(func=cmd_gmail_auth)
+    gmail_sub.add_parser("disconnect").set_defaults(func=cmd_gmail_disconnect)
+    test_draft_p = gmail_sub.add_parser("test-draft")
+    test_draft_p.add_argument("--to", default="")
+    test_draft_p.set_defaults(func=cmd_gmail_test_draft)
+
+    voice_p = sub.add_parser("voice")
+    voice_p.add_argument("--debug", action="store_true")
+    voice_p.add_argument("--wake-word", default="nova")
+    voice_p.add_argument("--push-to-talk", action="store_true")
+    voice_p.add_argument("--transcript", default="")
+    voice_p.add_argument("--session-id", default=None)
+    voice_p.set_defaults(func=cmd_voice)
 
     args = parser.parse_args()
     return int(args.func(args))

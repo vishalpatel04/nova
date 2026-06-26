@@ -259,6 +259,7 @@ class PendingToolIntentStatus(StrEnum):
 class PendingToolIntentType(StrEnum):
     PERSONAL_SEARCH_SCOPE_CONFIRMATION = "personal_search.scope_confirmation"
     APP_SPEC_CLARIFICATION = "agent_os.app_spec_clarification"
+    ORBIT_EMAIL_RECIPIENT = "orbit.email_recipient"
 
 
 class MemoryAccessProfile(StrEnum):

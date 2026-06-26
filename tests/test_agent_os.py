@@ -530,8 +530,17 @@ async def test_chat_todo_mission_not_general(
         token_role="client",
     )
     with patch("nova_core.agent_os.mission.build_app") as mock_build:
-        mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "NOVA Todo", "todo-app")
-        resp = await svc.handle_message(message="build a todo app called demo", principal=principal)
+        mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "demo", "demo-todo-app")
+        first = await svc.handle_message(
+            message="build a todo app called demo", principal=principal
+        )
+        assert first["intent"] == "agent_os_mission"
+        assert "Proceed" in first["response"] or "proceed" in first["response"].lower()
+        resp = await svc.handle_message(
+            message="yes",
+            principal=principal,
+            session_id=first["session_id"],
+        )
     assert resp["intent"] == "agent_os_mission"
     assert "Deploy this app?" in resp["response"]
 

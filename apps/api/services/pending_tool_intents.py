@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,6 +105,8 @@ class PendingToolIntentService:
         app_type: str,
         app_name: str,
         runtime: str = "web",
+        mode: str = "clarification",
+        safe_assumptions: list[str] | None = None,
     ) -> PendingToolIntent:
         if not principal.device_id:
             raise ValidationError("Device id required for pending tool intent")
@@ -119,6 +122,8 @@ class PendingToolIntentService:
                 "app_type": app_type,
                 "app_name": app_name,
                 "runtime": runtime,
+                "mode": mode,
+                "safe_assumptions": safe_assumptions or [],
             },
             status=PendingToolIntentStatus.PENDING.value,
             expires_at=expires_at,
@@ -127,13 +132,56 @@ class PendingToolIntentService:
         await self.session.flush()
         return record
 
-    def payload_app_spec(self, record: PendingToolIntent) -> dict[str, str]:
+    async def create_orbit_email_recipient(
+        self,
+        principal: Principal,
+        *,
+        session_id: str,
+        raw_request: str,
+        topic: str,
+        kind: str,
+        purpose: str,
+    ) -> PendingToolIntent:
+        if not principal.device_id:
+            raise ValidationError("Device id required for pending tool intent")
+        await self.cancel_active_for_session(principal, session_id)
+        expires_at = _utc_now() + timedelta(minutes=PENDING_INTENT_TTL_MINUTES)
+        record = PendingToolIntent(
+            session_id=session_id,
+            user_id=principal.user_id,
+            device_id=principal.device_id,
+            intent_type=PendingToolIntentType.ORBIT_EMAIL_RECIPIENT.value,
+            payload_json={
+                "raw_request": raw_request.strip()[:2000],
+                "topic": topic.strip()[:500],
+                "kind": kind,
+                "purpose": purpose,
+            },
+            status=PendingToolIntentStatus.PENDING.value,
+            expires_at=expires_at,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        return record
+
+    def payload_orbit_email(self, record: PendingToolIntent) -> dict[str, str]:
+        payload = record.payload_json or {}
+        return {
+            "raw_request": str(payload.get("raw_request", "")),
+            "topic": str(payload.get("topic", "this app")),
+            "kind": str(payload.get("kind", "general")),
+            "purpose": str(payload.get("purpose", "general")),
+        }
+
+    def payload_app_spec(self, record: PendingToolIntent) -> dict[str, Any]:
         payload = record.payload_json or {}
         return {
             "raw_request": str(payload.get("raw_request", "")),
             "app_type": str(payload.get("app_type", "generic")),
             "app_name": str(payload.get("app_name", "App")),
             "runtime": str(payload.get("runtime", "web")),
+            "mode": str(payload.get("mode", "clarification")),
+            "safe_assumptions": list(payload.get("safe_assumptions") or []),
         }
 
     async def _fetch_pending(

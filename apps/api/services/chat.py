@@ -72,13 +72,22 @@ from nova_core.models.enums import (
     PendingToolIntentType,
 )
 from nova_core.models.orm import ChatMessageRecord, Mission
-from nova_core.orbit.email_intent import parse_email_draft_request, resolve_email_send_intent
+from nova_core.orbit.email_intent import (
+    EmailEditRequest,
+    parse_email_draft_request,
+    parse_email_edit_request,
+    resolve_email_send_intent,
+)
 from nova_core.orchestration.app_request import parse_app_request
 from nova_core.orchestration.app_spec_clarification import (
-    build_clarification_message,
     is_assumption_continuation,
     is_vague_app_request,
     merge_request_with_answers,
+)
+from nova_core.orchestration.intent_debug import log_intent_route
+from nova_core.orchestration.qwen_clarifier import (
+    build_clarification_message_async,
+    should_quick_confirm,
 )
 from nova_core.project.inspect import format_inspection, inspect_repo
 from nova_core.project.validation import pick_validation_command, run_validation_command
@@ -270,6 +279,7 @@ class ChatService:
             "agent_os_preview": self._agent_os_preview,
             "system_memory_status": self._system_memory_status,
             "orbit_email_draft": self._orbit_email_draft,
+            "orbit_email_edit": self._orbit_email_edit,
             "orbit_email_send_yes": self._orbit_email_send_yes,
             "orbit_email_send_no": self._orbit_email_send_no,
             "orbit_email_send_blocked": self._orbit_email_send_blocked,
@@ -307,8 +317,57 @@ class ChatService:
             routing=routing,
         )
         if pending_tool_response is not None:
+            log_intent_route(
+                self.settings,
+                text=text,
+                intent=str(pending_tool_response.get("intent", "pending_tool")),
+                handler="pending_tool_intent",
+            )
             await self._persist_assistant(sessions, chat_session, pending_tool_response)
             return pending_tool_response
+
+        deploy_intent = resolve_deployment_chat_intent(text)
+        if deploy_intent is not None:
+            intent_name, deploy_args = deploy_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, deploy_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                log_intent_route(self.settings, text=text, intent=intent_name, handler=intent_name)
+                await self._persist_assistant(sessions, chat_session, response)
+                return response
+
+        orbit_email_svc = OrbitEmailService(self.settings)
+        email_edit = parse_email_edit_request(text)
+        if email_edit is not None and orbit_email_svc.latest_awaiting_send() is not None:
+            body = await self._orbit_email_edit(
+                principal,
+                {"instruction": email_edit.instruction},
+                routing=routing,
+                session_id=chat_session.id,
+            )
+            extra = self._collect_handler_extra("orbit_email_edit")
+            response = self._response(
+                body,
+                intent="orbit_email_edit",
+                routing=routing,
+                session_id=chat_session.id,
+                **extra,
+            )
+            log_intent_route(
+                self.settings, text=text, intent="orbit_email_edit", handler="orbit_email_edit"
+            )
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
 
         orbit_email_svc = OrbitEmailService(self.settings)
         email_intent = resolve_email_send_intent(
@@ -333,24 +392,21 @@ class ChatService:
                 await self._persist_assistant(sessions, chat_session, response)
                 return response
 
-        deploy_intent = resolve_deployment_chat_intent(text)
-        if deploy_intent is not None:
-            intent_name, deploy_args = deploy_intent
-            handler = self._intent_handlers().get(intent_name)
-            if handler:
-                body = await handler(
-                    principal, deploy_args, routing=routing, session_id=chat_session.id
-                )
-                extra = self._collect_handler_extra(intent_name)
-                response = self._response(
-                    body,
-                    intent=intent_name,
-                    routing=routing,
-                    session_id=chat_session.id,
-                    **extra,
-                )
-                await self._persist_assistant(sessions, chat_session, response)
-                return response
+        orbit_recipient_response = await self._try_resolve_pending_orbit_email(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if orbit_recipient_response is not None:
+            log_intent_route(
+                self.settings,
+                text=text,
+                intent="orbit_email_recipient",
+                handler="orbit_email_recipient",
+            )
+            await self._persist_assistant(sessions, chat_session, orbit_recipient_response)
+            return orbit_recipient_response
 
         app_spec_response = await self._try_resolve_pending_app_spec(
             principal,
@@ -524,6 +580,53 @@ class ChatService:
                 yield event
             return
 
+        deploy_intent = resolve_deployment_chat_intent(text)
+        if deploy_intent is not None:
+            intent_name, deploy_args = deploy_intent
+            handler = self._intent_handlers().get(intent_name)
+            if handler:
+                body = await handler(
+                    principal, deploy_args, routing=routing, session_id=chat_session.id
+                )
+                extra = self._collect_handler_extra(intent_name)
+                response = self._response(
+                    body,
+                    intent=intent_name,
+                    routing=routing,
+                    session_id=chat_session.id,
+                    **extra,
+                )
+                async for event in self._emit_full_response(sessions, chat_session, response):
+                    if cancel and cancel.cancelled:
+                        yield {"event": "cancelled", "data": {}}
+                        return
+                    yield event
+                return
+
+        orbit_email_svc = OrbitEmailService(self.settings)
+        email_edit = parse_email_edit_request(text)
+        if email_edit is not None and orbit_email_svc.latest_awaiting_send() is not None:
+            body = await self._orbit_email_edit(
+                principal,
+                {"instruction": email_edit.instruction},
+                routing=routing,
+                session_id=chat_session.id,
+            )
+            extra = self._collect_handler_extra("orbit_email_edit")
+            response = self._response(
+                body,
+                intent="orbit_email_edit",
+                routing=routing,
+                session_id=chat_session.id,
+                **extra,
+            )
+            async for event in self._emit_full_response(sessions, chat_session, response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
         orbit_email_svc = OrbitEmailService(self.settings)
         email_intent = resolve_email_send_intent(
             text,
@@ -551,28 +654,21 @@ class ChatService:
                     yield event
                 return
 
-        deploy_intent = resolve_deployment_chat_intent(text)
-        if deploy_intent is not None:
-            intent_name, deploy_args = deploy_intent
-            handler = self._intent_handlers().get(intent_name)
-            if handler:
-                body = await handler(
-                    principal, deploy_args, routing=routing, session_id=chat_session.id
-                )
-                extra = self._collect_handler_extra(intent_name)
-                response = self._response(
-                    body,
-                    intent=intent_name,
-                    routing=routing,
-                    session_id=chat_session.id,
-                    **extra,
-                )
-                async for event in self._emit_full_response(sessions, chat_session, response):
-                    if cancel and cancel.cancelled:
-                        yield {"event": "cancelled", "data": {}}
-                        return
-                    yield event
-                return
+        orbit_recipient_response = await self._try_resolve_pending_orbit_email(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if orbit_recipient_response is not None:
+            async for event in self._emit_full_response(
+                sessions, chat_session, orbit_recipient_response
+            ):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
 
         app_spec_response = await self._try_resolve_pending_app_spec(
             principal,
@@ -1745,8 +1841,10 @@ class ChatService:
         session_id = _kw.get("session_id")
         if app_request.requires_clarification:
             return app_request.clarification_message
-        if is_vague_app_request(app_request) and session_id:
+        if session_id and (is_vague_app_request(app_request) or should_quick_confirm(app_request)):
+            message, plan = await build_clarification_message_async(self.settings, app_request)
             pending_svc = PendingToolIntentService(self.session)
+            mode = "quick_confirm" if plan.proceed_with_confirmation else "clarification"
             await pending_svc.create_app_spec_clarification(
                 principal,
                 session_id=session_id,
@@ -1754,9 +1852,11 @@ class ChatService:
                 app_type=app_request.app_type,
                 app_name=app_request.app_name,
                 runtime=app_request.runtime,
+                mode=mode,
+                safe_assumptions=plan.safe_assumptions,
             )
             self._pending_tool_intent_type = "agent_os_app_spec"
-            return build_clarification_message(app_request)
+            return message
         svc = AgentMissionService(self.session, self.settings)
         mission = svc.run_mission(request, run_npm=True, clean_workspace=True, start_preview=True)
         self._store_agent_mission_payload(mission)
@@ -1778,6 +1878,7 @@ class ChatService:
             return None
         payload = pending_svc.payload_app_spec(record)
         raw_request = payload["raw_request"]
+        mode = str(payload.get("mode", "clarification"))
         app_request = parse_app_request(raw_request)
         if app_request is None:
             await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
@@ -1788,6 +1889,14 @@ class ChatService:
                 session_id=session_id,
             )
         lowered = text.lower().strip()
+        if lowered in {"cancel", "stop", "never mind", "no"} and mode == "quick_confirm":
+            await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
+            return self._response(
+                "App build cancelled.",
+                intent="pending_cancelled",
+                routing=routing,
+                session_id=session_id,
+            )
         if lowered in {"cancel", "stop", "never mind"}:
             await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
             return self._response(
@@ -1797,24 +1906,41 @@ class ChatService:
                 session_id=session_id,
             )
         use_assumptions = is_assumption_continuation(text)
-        if not use_assumptions and not text.strip():
+        quick_yes = mode == "quick_confirm" and lowered in {"yes", "y", "proceed", "build"}
+        if not use_assumptions and not quick_yes and not text.strip():
+            message, _plan = await build_clarification_message_async(self.settings, app_request)
             return self._response(
-                build_clarification_message(app_request),
+                message,
                 intent="agent_os_app_spec",
                 routing=routing,
                 session_id=session_id,
                 pending_tool_intent=record.intent_type,
             )
-        enhanced, assumptions = merge_request_with_answers(
-            raw_request,
-            app_request,
-            text,
-            use_assumptions=use_assumptions,
-        )
+        if mode == "quick_confirm" and not quick_yes and not use_assumptions:
+            message, _plan = await build_clarification_message_async(self.settings, app_request)
+            return self._response(
+                message,
+                intent="agent_os_app_spec",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=record.intent_type,
+            )
+        stored_assumptions: list[Any] = payload.get("safe_assumptions") or []
+        if use_assumptions and stored_assumptions and isinstance(stored_assumptions, list):
+            assumptions = [str(item) for item in stored_assumptions]
+            note = "Assumptions: " + "; ".join(assumptions)
+            enhanced = f"{raw_request.strip()}\n\n{note}"
+        else:
+            enhanced, assumptions = merge_request_with_answers(
+                raw_request,
+                app_request,
+                text,
+                use_assumptions=use_assumptions or quick_yes,
+            )
         await pending_svc.consume(record)
         intro = (
             "Great. Building with assumptions…"
-            if use_assumptions
+            if use_assumptions or quick_yes
             else "Thanks — incorporating your guidance and building now…"
         )
         svc = AgentMissionService(self.session, self.settings)
@@ -1844,11 +1970,52 @@ class ChatService:
         if parsed is None:
             return "Usage: draft an investor update email about this app"
         svc = OrbitEmailService(self.settings)
-        draft = svc.create_draft(parsed)
+        outcome = await svc.prepare_draft(parsed)
+        session_id = _kw.get("session_id")
+        if outcome.kind == "need_recipient" and session_id:
+            pending_svc = PendingToolIntentService(self.session)
+            await pending_svc.create_orbit_email_recipient(
+                principal,
+                session_id=session_id,
+                raw_request=parsed.raw_text,
+                topic=parsed.topic,
+                kind=parsed.kind,
+                purpose=parsed.purpose,
+            )
+            self._pending_tool_intent_type = PendingToolIntentType.ORBIT_EMAIL_RECIPIENT.value
+            return outcome.message
+        if outcome.draft is None:
+            return outcome.message or "Could not create email draft."
+        draft = outcome.draft
+        self._last_orbit_email_meta = svc.payload_for(draft)
+        payload = self._last_orbit_email_meta
+        gmail_note = ""
+        if draft.source != "gmail":
+            gmail_note = "\n(Gmail is not connected — saved as local draft artifact.)"
+        return (
+            "Email draft ready.\n\n"
+            f"To: {draft.to}\n"
+            f"Subject: {draft.subject}\n\n"
+            f"{draft.body[:800]}\n\n"
+            f"Draft source: {payload['result']['draft_source']}"
+            f"{gmail_note}\n"
+            "Send this email?"
+        )
+
+    async def _orbit_email_edit(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        instruction = args.get("instruction", "").strip()
+        svc = OrbitEmailService(self.settings)
+        edit_request = EmailEditRequest(raw_text=instruction, instruction=instruction)
+        try:
+            draft = await svc.edit_draft(None, edit_request)
+        except ValueError as exc:
+            return str(exc)
         self._last_orbit_email_meta = svc.payload_for(draft)
         payload = self._last_orbit_email_meta
         return (
-            "Email draft ready.\n\n"
+            "Updated email draft.\n\n"
             f"To: {draft.to}\n"
             f"Subject: {draft.subject}\n\n"
             f"{draft.body[:800]}\n\n"
@@ -1856,19 +2023,68 @@ class ChatService:
             "Send this email?"
         )
 
+    async def _try_resolve_pending_orbit_email(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        pending_svc = PendingToolIntentService(self.session)
+        record = await pending_svc.get_active(principal, session_id)
+        if record is None:
+            return None
+        if record.intent_type != PendingToolIntentType.ORBIT_EMAIL_RECIPIENT.value:
+            return None
+        payload = pending_svc.payload_orbit_email(record)
+        if not text.strip():
+            return self._response(
+                "Who should receive this email?",
+                intent="orbit_email_recipient",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=record.intent_type,
+            )
+        svc = OrbitEmailService(self.settings)
+        draft = await svc.create_draft_from_recipient_reply(
+            raw_request=payload["raw_request"],
+            topic=payload["topic"],
+            kind=payload["kind"],
+            purpose=payload["purpose"],
+            recipient_text=text.strip(),
+        )
+        await pending_svc.consume(record)
+        self._last_orbit_email_meta = svc.payload_for(draft)
+        body = (
+            "Email draft ready.\n\n"
+            f"To: {draft.to}\n"
+            f"Subject: {draft.subject}\n\n"
+            f"{draft.body[:800]}\n\n"
+            f"Draft source: {self._last_orbit_email_meta['result']['draft_source']}\n"
+            "Send this email?"
+        )
+        extra = self._collect_handler_extra("orbit_email_draft")
+        return self._response(
+            body,
+            intent="orbit_email_draft",
+            routing=routing,
+            session_id=session_id,
+            **extra,
+        )
+
     async def _orbit_email_send_yes(
         self, principal: Principal, _args: dict[str, str], **_kw: Any
     ) -> str:
         svc = OrbitEmailService(self.settings)
         try:
-            draft = svc.approve_send()
+            draft, evidence = svc.approve_send()
         except ValueError as exc:
             return str(exc)
         self._last_orbit_email_meta = svc.payload_for(draft)
-        return (
-            "Send approval recorded.\n"
-            "Gmail send integration is prepared but not enabled in this build."
-        )
+        if draft.status == "sent":
+            return f"Email sent.\n{evidence}"
+        return f"{evidence}\nDraft preserved at {draft.evidence_path or 'local store'}."
 
     async def _orbit_email_send_no(
         self, principal: Principal, _args: dict[str, str], **_kw: Any

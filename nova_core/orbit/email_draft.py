@@ -141,5 +141,14 @@ def try_create_gmail_draft(
 ) -> tuple[str, str | None]:
     if not gmail_enabled:
         return "local", None
-    # Gmail OAuth integration is prepared but not enabled in this build.
-    return "local", None
+    try:
+        from apps.api.services.gmail_draft_service import GmailDraftService
+        from nova_core.schemas.settings import Settings
+
+        service = GmailDraftService(Settings())
+        if not service.is_configured():
+            return "local", None
+        source, draft_id = service.create_draft(to=to, subject=subject, body=body)
+        return source, draft_id
+    except Exception:
+        return "local", None

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,14 +84,23 @@ async def test_vague_landing_page_returns_clarification_not_build(
     db_session: AsyncSession, test_settings: Settings, workspace_tmp: Path
 ) -> None:
     svc = ChatService(db_session, test_settings)
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with (
+        patch("nova_core.agent_os.mission.build_app") as mock_build,
+        patch(
+            "nova_core.orchestration.qwen_clarifier.generate_clarification_plan",
+            new=AsyncMock(
+                side_effect=lambda _s, request: __import__(
+                    "nova_core.orchestration.qwen_clarifier", fromlist=["deterministic_plan"]
+                ).deterministic_plan(request)
+            ),
+        ),
+    ):
         resp = await svc.handle_message(
             message="build a landing page for SusCo",
             principal=_principal(test_settings),
         )
     mock_build.assert_not_called()
     assert resp["intent"] == "agent_os_mission"
-    assert "Quick spec" in resp["response"]
     assert "use your best assumptions" in resp["response"].lower()
     assert "save this script as" not in resp["response"].lower()
 
@@ -187,7 +196,7 @@ async def test_email_draft_routes_to_orbit(
 ) -> None:
     svc = ChatService(db_session, test_settings)
     resp = await svc.handle_message(
-        message="draft an investor update email about this app",
+        message="draft an email to investor@example.com about this app",
         principal=_principal(test_settings),
     )
     assert resp["intent"] == "orbit_email_draft"
@@ -199,13 +208,26 @@ async def test_email_draft_routes_to_orbit(
 
 
 @pytest.mark.asyncio
+async def test_email_draft_without_recipient_asks(
+    db_session: AsyncSession, test_settings: Settings, workspace_tmp: Path
+) -> None:
+    svc = ChatService(db_session, test_settings)
+    resp = await svc.handle_message(
+        message="draft an investor update email about this app",
+        principal=_principal(test_settings),
+    )
+    assert "email" in resp["response"].lower()
+    assert resp.get("orbit_email_draft") is None or "who" in resp["response"].lower()
+
+
+@pytest.mark.asyncio
 async def test_email_send_no_skips(
     db_session: AsyncSession, test_settings: Settings, workspace_tmp: Path
 ) -> None:
     svc = ChatService(db_session, test_settings)
     principal = _principal(test_settings)
     await svc.handle_message(
-        message="draft an investor update email about this app",
+        message="draft an email to investor@example.com about this app",
         principal=principal,
     )
     resp = await svc.handle_message(message="no", principal=principal)
@@ -221,8 +243,10 @@ async def test_local_email_artifact_created(
     svc = OrbitEmailService(test_settings)
     from nova_core.orbit.email_intent import parse_email_draft_request
 
-    parsed = parse_email_draft_request("draft an investor update email about this app")
+    parsed = parse_email_draft_request("draft an email to investor@example.com about this app")
     assert parsed is not None
-    draft = svc.create_draft(parsed)
+    outcome = await svc.prepare_draft(parsed)
+    assert outcome.draft is not None
+    draft = outcome.draft
     assert Path(draft.evidence_path).exists()
     assert draft.source == "local"
