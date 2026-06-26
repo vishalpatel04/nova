@@ -13,6 +13,7 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     let timestamp: Date
     var blocked: Bool
     var isStreaming: Bool
+    var agentOSMission: AgentOSMissionPayload?
 
     init(
         id: UUID = UUID(),
@@ -20,7 +21,8 @@ struct ChatMessage: Identifiable, Equatable, Codable {
         content: String,
         timestamp: Date = Date(),
         blocked: Bool = false,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        agentOSMission: AgentOSMissionPayload? = nil
     ) {
         self.id = id
         self.role = role
@@ -28,5 +30,6 @@ struct ChatMessage: Identifiable, Equatable, Codable {
         self.timestamp = timestamp
         self.blocked = blocked
         self.isStreaming = isStreaming
+        self.agentOSMission = agentOSMission
     }
 }

@@ -18,6 +18,7 @@
 		4FEE98327ED30F2CBD0E6693 /* StreamStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D767E1614BA0AB55F34730B /* StreamStatusTests.swift */; };
 		ED4BC3AE50733AD041E0099D /* MacDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */; };
 		4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86229821ED7D22D66EDF6200 /* MacAppState.swift */; };
+		EFCDFF8C4F48C9A752977924 /* AgentOSMissionPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */; };
 		32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */; };
 		AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */; };
 		79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB55D0EC448543D6089692EC /* ChatStreamClient.swift */; };
@@ -35,6 +36,7 @@
 		7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */; };
 		A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */; };
 		27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */; };
+		18C4CC61BDC42C76748B197F /* AgentOSMissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8209862DEE5B002CBC377FE /* AgentOSMissionCardView.swift */; };
 		345F17A5C64DCD5FFA6FF6CF /* AgentOrchestrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2448238726AAF02BE6CE42D6 /* AgentOrchestrationView.swift */; };
 		F4FBE66FC3024381F473576B /* ApprovalQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AA59646602DDA34A3829AB /* ApprovalQueueView.swift */; };
 		6BDA5F4EC9A70A4D1647D7D1 /* BackgroundTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F516ED8E7B698BA5FA7D3C0 /* BackgroundTasksView.swift */; };
@@ -82,6 +84,7 @@
 		0CEB413FCA0203BF1CCEFFAB /* NOVAGenieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NOVAGenieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Design/MacDesignTokens.swift"; sourceTree = "<group>"; };
 		86229821ED7D22D66EDF6200 /* MacAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacAppState.swift"; sourceTree = "<group>"; };
+		62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/AgentOSMissionPayload.swift"; sourceTree = "<group>"; };
 		82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ChatMessage.swift"; sourceTree = "<group>"; };
 		8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVAGenieApp.swift"; sourceTree = "<group>"; };
 		CB55D0EC448543D6089692EC /* ChatStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/ChatStreamClient.swift"; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 		05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/LaunchAtLoginHelper.swift"; sourceTree = "<group>"; };
 		02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/MenuBarCoordinator.swift"; sourceTree = "<group>"; };
 		714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "System/NovaHotkeyTelemetry.swift"; sourceTree = "<group>"; };
+		A8209862DEE5B002CBC377FE /* AgentOSMissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/AgentOSMissionCardView.swift"; sourceTree = "<group>"; };
 		2448238726AAF02BE6CE42D6 /* AgentOrchestrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/AgentOrchestrationView.swift"; sourceTree = "<group>"; };
 		48AA59646602DDA34A3829AB /* ApprovalQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/ApprovalQueueView.swift"; sourceTree = "<group>"; };
 		1F516ED8E7B698BA5FA7D3C0 /* BackgroundTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/BackgroundTasksView.swift"; sourceTree = "<group>"; };
@@ -159,6 +163,7 @@
 			children = (
 				04B580E38A6E52F629E2AF91 /* MacDesignTokens.swift */,
 				86229821ED7D22D66EDF6200 /* MacAppState.swift */,
+				62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */,
 				82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */,
 				8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */,
 				CB55D0EC448543D6089692EC /* ChatStreamClient.swift */,
@@ -176,6 +181,7 @@
 				05ADFA34CD55AF1F0B24E1D2 /* LaunchAtLoginHelper.swift */,
 				02CAF9F5C3BA28CD265BE3F0 /* MenuBarCoordinator.swift */,
 				714293B7C4298CFCE8DEC106 /* NovaHotkeyTelemetry.swift */,
+				A8209862DEE5B002CBC377FE /* AgentOSMissionCardView.swift */,
 				2448238726AAF02BE6CE42D6 /* AgentOrchestrationView.swift */,
 				48AA59646602DDA34A3829AB /* ApprovalQueueView.swift */,
 				1F516ED8E7B698BA5FA7D3C0 /* BackgroundTasksView.swift */,
@@ -334,6 +340,7 @@
 			files = (
 				ED4BC3AE50733AD041E0099D /* MacDesignTokens.swift in Sources */,
 				4B6124584D1060392BB3DCCB /* MacAppState.swift in Sources */,
+				EFCDFF8C4F48C9A752977924 /* AgentOSMissionPayload.swift in Sources */,
 				32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */,
 				AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */,
 				79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */,
@@ -351,6 +358,7 @@
 				7B98593B67EA84C96B239A91 /* LaunchAtLoginHelper.swift in Sources */,
 				A2330B3DF0FDE6C73C627AA5 /* MenuBarCoordinator.swift in Sources */,
 				27C3FBF137C061E695446A58 /* NovaHotkeyTelemetry.swift in Sources */,
+				18C4CC61BDC42C76748B197F /* AgentOSMissionCardView.swift in Sources */,
 				345F17A5C64DCD5FFA6FF6CF /* AgentOrchestrationView.swift in Sources */,
 				F4FBE66FC3024381F473576B /* ApprovalQueueView.swift in Sources */,
 				6BDA5F4EC9A70A4D1647D7D1 /* BackgroundTasksView.swift in Sources */,

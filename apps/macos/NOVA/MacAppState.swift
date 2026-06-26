@@ -286,11 +286,15 @@ final class MacAppState: ObservableObject {
             let selectedProvider,
             let selectedModel,
             let fallbackReason,
-            let localAvailable
+            let localAvailable,
+            let agentOSMission
         ):
             var message = chatMessages[index]
             message.isStreaming = false
-            if !response.isEmpty {
+            if let agentOSMission {
+                message.agentOSMission = agentOSMission
+                message.content = agentOSMission.text.isEmpty ? response : agentOSMission.text
+            } else if !response.isEmpty {
                 message.content = response
             }
             message.blocked = blocked
@@ -322,7 +326,8 @@ final class MacAppState: ObservableObject {
             }
             if let pendingToolIntent {
                 self.pendingToolIntent = pendingToolIntent
-            } else if intent == "pending_cancelled" || intent == "pending_expired" || intent == "safe_search" {
+            } else if intent == "pending_cancelled" || intent == "pending_expired" || intent == "safe_search"
+                || intent == "agent_os_deploy_yes" || intent == "agent_os_deploy_no" {
                 self.pendingToolIntent = nil
             }
             Task { await refreshRecentChatSessions() }
@@ -343,15 +348,22 @@ final class MacAppState: ObservableObject {
             activeChatSessionId = response.sessionId ?? activeChatSessionId
             let role: ChatMessage.Role = response.blocked ? .error : .assistant
             if let index = chatMessages.firstIndex(where: { $0.id == assistantId }) {
+                let content = response.agentOsMission?.text ?? response.response
                 chatMessages[index] = ChatMessage(
                     id: assistantId,
                     role: role,
-                    content: response.response,
-                    blocked: response.blocked
+                    content: content,
+                    blocked: response.blocked,
+                    agentOSMission: response.agentOsMission
                 )
             } else {
                 chatMessages.append(
-                    ChatMessage(role: role, content: response.response, blocked: response.blocked)
+                    ChatMessage(
+                        role: role,
+                        content: response.agentOsMission?.text ?? response.response,
+                        blocked: response.blocked,
+                        agentOSMission: response.agentOsMission
+                    )
                 )
             }
             persistChatSnapshot()
@@ -366,7 +378,9 @@ final class MacAppState: ObservableObject {
                 pendingToolIntent = pending
             } else if response.intent == "pending_cancelled"
                 || response.intent == "pending_expired"
-                || response.intent == "safe_search" {
+                || response.intent == "safe_search"
+                || response.intent == "agent_os_deploy_yes"
+                || response.intent == "agent_os_deploy_no" {
                 pendingToolIntent = nil
             }
             if let runtimeMode = response.runtimeMode {

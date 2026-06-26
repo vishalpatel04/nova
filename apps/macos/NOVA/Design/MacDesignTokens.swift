@@ -3,6 +3,9 @@ import SwiftUI
 struct MacDesignTokens {
     static let novaBlue = Color(red: 0.2, green: 0.5, blue: 0.95)
     static let background = Color(nsColor: .windowBackgroundColor)
+    static let glassFill = Color.black.opacity(0.28)
+    static let glassStroke = Color.white.opacity(0.12)
+    static let chatPanel = Color(nsColor: .windowBackgroundColor).opacity(0.55)
 
     static func agentColor(for token: String) -> Color {
         switch token {

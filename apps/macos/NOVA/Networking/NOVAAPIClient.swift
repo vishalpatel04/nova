@@ -530,6 +530,27 @@ struct MacChatResponse: Decodable {
     let selectedModel: String?
     let fallbackReason: String?
     let localAvailable: Bool?
+    let agentOsMission: AgentOSMissionPayload?
+
+    enum CodingKeys: String, CodingKey {
+        case response, intent, blocked
+        case sessionId = "session_id"
+        case tokenUsage = "token_usage"
+        case approvalRequired = "approval_required"
+        case approvalId = "approval_id"
+        case riskLevel = "risk_level"
+        case taskId = "task_id"
+        case timeline
+        case activeProject = "active_project"
+        case pendingToolIntent = "pending_tool_intent"
+        case unifiedDiff = "unified_diff"
+        case runtimeMode = "runtime_mode"
+        case selectedProvider = "selected_provider"
+        case selectedModel = "selected_model"
+        case fallbackReason = "fallback_reason"
+        case localAvailable = "local_available"
+        case agentOsMission = "agent_os_mission"
+    }
 }
 
 struct MacTaskTimelineEntry: Decodable, Identifiable {

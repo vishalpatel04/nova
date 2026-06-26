@@ -27,10 +27,74 @@ def _runner() -> AgentMissionRunner:
 
 
 def cmd_status(_: argparse.Namespace) -> int:
+    settings = Settings()
     print("NOVA Agent OS v1")
     print(f"Workspace: {workspace_root()}")
     print(f"Missions: {MissionStore().base_dir}")
+    local_model = settings.nova_local_model or settings.nova_ollama_model or "(auto)"
+    print(f"Local model lane: {local_model}")
+    if settings.nova_coder_model:
+        print(f"Coder model lane: {settings.nova_coder_model}")
+    if settings.nova_long_context_model:
+        print(f"Long-context model lane: {settings.nova_long_context_model}")
     return 0
+
+
+def _fetch_installed_models() -> list[str]:
+    import httpx
+
+    settings = Settings()
+    url = f"{settings.nova_ollama_base_url.rstrip('/')}/api/tags"
+    try:
+        resp = httpx.get(url, timeout=5.0)
+        resp.raise_for_status()
+        return [
+            str(entry.get("name", ""))
+            for entry in resp.json().get("models", [])
+            if entry.get("name")
+        ]
+    except Exception:
+        return []
+
+
+def _lane_status(model: str, installed: list[str]) -> str:
+    if not model or model in {"(auto)", "(not set)"}:
+        return "configured"
+    if model in installed:
+        return "installed"
+    prefix = model.split(":")[0]
+    if any(name.startswith(prefix) for name in installed):
+        return "installed"
+    return "missing"
+
+
+def cmd_models(_: argparse.Namespace) -> int:
+    settings = Settings()
+    installed = _fetch_installed_models()
+    lanes = {
+        "local_default": settings.nova_local_model or settings.nova_ollama_model or "(auto)",
+        "local_coder": settings.nova_coder_model or "(not set)",
+        "local_long_context": settings.nova_long_context_model or "(not set)",
+        "qwen": settings.nova_qwen_model or "(auto)",
+    }
+    print("Model lanes:")
+    for lane, model in lanes.items():
+        print(f"- {lane}: {model} [{_lane_status(model, installed)}]")
+    print("\nInstalled Ollama models:")
+    if installed:
+        for name in installed:
+            print(f"- {name}")
+    else:
+        print("- (none reachable — start Ollama or run: nova pull-model <name>)")
+    return 0
+
+
+def cmd_pull_model(args: argparse.Namespace) -> int:
+    import subprocess
+
+    print(f"Pulling model: {args.name}")
+    result = subprocess.run(["ollama", "pull", args.name], check=False)
+    return int(result.returncode)
 
 
 def cmd_agents(_: argparse.Namespace) -> int:
@@ -188,6 +252,10 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status").set_defaults(func=cmd_status)
+    sub.add_parser("models").set_defaults(func=cmd_models)
+    pull_p = sub.add_parser("pull-model")
+    pull_p.add_argument("name")
+    pull_p.set_defaults(func=cmd_pull_model)
     sub.add_parser("agents").set_defaults(func=cmd_agents)
     sub.add_parser("skills").set_defaults(func=cmd_skills)
     sub.add_parser("memory-status").set_defaults(func=cmd_memory_status)

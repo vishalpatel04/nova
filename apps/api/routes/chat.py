@@ -52,6 +52,7 @@ async def chat(
         selected_model=result.get("selected_model"),
         fallback_reason=result.get("fallback_reason"),
         local_available=result.get("local_available"),
+        agent_os_mission=result.get("agent_os_mission"),
     )
 
 

@@ -15,7 +15,8 @@ struct ChatStreamEvent: Equatable {
             selectedProvider: String?,
             selectedModel: String?,
             fallbackReason: String?,
-            localAvailable: Bool?
+            localAvailable: Bool?,
+            agentOSMission: AgentOSMissionPayload?
         )
         case cancelled
         case error(String)
@@ -114,7 +115,8 @@ final class ChatStreamClient: ObservableObject {
                         selectedProvider: json["selected_provider"] as? String,
                         selectedModel: json["selected_model"] as? String,
                         fallbackReason: json["fallback_reason"] as? String,
-                        localAvailable: json["local_available"] as? Bool
+                        localAvailable: json["local_available"] as? Bool,
+                        agentOSMission: decodeAgentOSMission(json)
                     )
                 )
             )
@@ -125,5 +127,14 @@ final class ChatStreamClient: ObservableObject {
         default:
             break
         }
+    }
+
+    private func decodeAgentOSMission(_ json: [String: Any]) -> AgentOSMissionPayload? {
+        guard let mission = json["agent_os_mission"],
+              JSONSerialization.isValidJSONObject(mission),
+              let data = try? JSONSerialization.data(withJSONObject: mission) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AgentOSMissionPayload.self, from: data)
     }
 }

@@ -209,8 +209,19 @@ def is_system_memory_status_request(text: str) -> bool:
     }
 
 
-_DEPLOY_YES = frozenset({"yes", "deploy it", "approve deployment", "approve deploy"})
-_DEPLOY_NO = frozenset({"no", "don't deploy", "dont deploy", "not now"})
+_DEPLOY_YES = frozenset(
+    {
+        "yes",
+        "y",
+        "approve",
+        "deploy it",
+        "deploy",
+        "package it",
+        "approve deployment",
+        "approve deploy",
+    }
+)
+_DEPLOY_NO = frozenset({"no", "n", "skip", "skip deploy", "not now", "don't deploy", "dont deploy"})
 
 
 def resolve_deployment_chat_intent(text: str) -> tuple[str, dict[str, str]] | None:

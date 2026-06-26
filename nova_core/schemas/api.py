@@ -189,6 +189,7 @@ class ChatResponse(BaseModel):
     selected_model: str | None = None
     fallback_reason: str | None = None
     local_available: bool | None = None
+    agent_os_mission: dict[str, Any] | None = None
 
 
 class ApprovalRequestCreateBody(BaseModel):

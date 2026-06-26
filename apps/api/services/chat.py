@@ -8,7 +8,7 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +39,8 @@ from apps.api.services.runtime import (
     RuntimeTelemetryService,
     UserMemoryService,
 )
+from nova_core.agent_os.chat_payload import build_agent_os_chat_payload
+from nova_core.agent_os.models import AgentMission
 from nova_core.auth.principal import Principal
 from nova_core.background.schedules import daily_cron_at
 from nova_core.capabilities.model import (
@@ -180,60 +182,12 @@ class ChatService:
         self._approval_svc = ApprovalRequestService(session, settings)
         self._last_task_meta: dict[str, Any] | None = None
         self._last_agent_mission_id: str | None = None
+        self._last_agent_mission_meta: dict[str, Any] | None = None
         self._pending_active_project: str | None = None
         self._pending_tool_intent_type: str | None = None
 
-    async def handle_message(
-        self,
-        *,
-        message: str,
-        principal: Principal,
-        session_id: str | None = None,
-        stream: bool = False,
-    ) -> dict[str, Any]:
-        text = message.strip()
-        if not text:
-            return self._response("Please enter a message.", intent="empty")
-
-        sessions = ChatSessionService(self.session)
-        chat_session = await sessions.get_or_create(principal, session_id, title=self._title(text))
-        await sessions.append_message(chat_session, role="user", content=text)
-
-        capability_response = await self._evaluate_capability_action(
-            text, principal, chat_session.id
-        )
-        if capability_response is not None:
-            await self._persist_assistant(sessions, chat_session, capability_response)
-            return capability_response
-
-        intent, args = self._parse_intent(text)
-        routing = self._router.route(text, intent=intent)
-
-        if intent in {"agent_os_deploy_yes", "agent_os_deploy_no"}:
-            pending_response = await self._try_resolve_pending_tool_intent(
-                principal,
-                text,
-                chat_session.id,
-                routing=routing,
-            )
-            if pending_response is not None:
-                await self._persist_assistant(sessions, chat_session, pending_response)
-                return pending_response
-
-        if intent == "help":
-            response = self._response(
-                HELP_TEXT, intent=intent, routing=routing, session_id=chat_session.id
-            )
-            await self._persist_assistant(sessions, chat_session, response)
-            return response
-
-        if intent == "blocked":
-            await self._audit_blocked(principal, text, reason="blocked_intent")
-            response = self._blocked_response(session_id=chat_session.id)
-            await self._persist_assistant(sessions, chat_session, response)
-            return response
-
-        handler = {
+    def _intent_handlers(self) -> dict[str, Callable[..., Awaitable[str]]]:
+        return {
             "system_status": self._system_status,
             "devices": self._connected_devices,
             "worker_status": self._worker_status,
@@ -305,7 +259,59 @@ class ChatService:
             "agent_os_deploy_no": self._agent_os_deploy_no,
             "agent_os_preview": self._agent_os_preview,
             "system_memory_status": self._system_memory_status,
-        }.get(intent)
+        }
+
+    async def handle_message(
+        self,
+        *,
+        message: str,
+        principal: Principal,
+        session_id: str | None = None,
+        stream: bool = False,
+    ) -> dict[str, Any]:
+        text = message.strip()
+        if not text:
+            return self._response("Please enter a message.", intent="empty")
+
+        sessions = ChatSessionService(self.session)
+        chat_session = await sessions.get_or_create(principal, session_id, title=self._title(text))
+        await sessions.append_message(chat_session, role="user", content=text)
+
+        capability_response = await self._evaluate_capability_action(
+            text, principal, chat_session.id
+        )
+        if capability_response is not None:
+            await self._persist_assistant(sessions, chat_session, capability_response)
+            return capability_response
+
+        intent, args = self._parse_intent(text)
+        routing = self._router.route(text, intent=intent)
+
+        if intent in {"agent_os_deploy_yes", "agent_os_deploy_no"}:
+            pending_response = await self._try_resolve_pending_tool_intent(
+                principal,
+                text,
+                chat_session.id,
+                routing=routing,
+            )
+            if pending_response is not None:
+                await self._persist_assistant(sessions, chat_session, pending_response)
+                return pending_response
+
+        if intent == "help":
+            response = self._response(
+                HELP_TEXT, intent=intent, routing=routing, session_id=chat_session.id
+            )
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
+
+        if intent == "blocked":
+            await self._audit_blocked(principal, text, reason="blocked_intent")
+            response = self._blocked_response(session_id=chat_session.id)
+            await self._persist_assistant(sessions, chat_session, response)
+            return response
+
+        handler = self._intent_handlers().get(intent)
 
         if handler and intent != "general":
             await PendingToolIntentService(self.session).cancel_active_for_session(
@@ -313,9 +319,7 @@ class ChatService:
             )
 
         if handler:
-            body = await cast(Callable[..., Awaitable[str]], handler)(
-                principal, args, routing=routing, session_id=chat_session.id
-            )
+            body = await handler(principal, args, routing=routing, session_id=chat_session.id)
             if body.startswith("Blocked:"):
                 response = self._response(
                     body,
@@ -465,48 +469,7 @@ class ChatService:
                 yield event
             return
 
-        handler = {
-            "system_status": self._system_status,
-            "devices": self._connected_devices,
-            "worker_status": self._worker_status,
-            "recent_missions": self._recent_missions,
-            "create_system_status_mission": self._create_system_status_mission,
-            "capabilities": self._worker_capabilities,
-            "list_directory": self._list_directory,
-            "read_file": self._read_file,
-            "ripgrep_search": self._safe_search,
-            "safe_search": self._safe_search,
-            "search_computer_prompt": self._search_computer_prompt,
-            "repo_analysis": self._repo_analysis,
-            "explain_code": self._explain_code,
-            "patch_plan": self._patch_plan,
-            "set_project": self._set_project,
-            "current_project": self._current_project,
-            "inspect_repo": self._inspect_repo,
-            "summarize_repo": self._summarize_repo,
-            "run_validation": self._run_validation,
-            "coding_task": self._coding_task,
-            "background_tasks": self._background_tasks,
-            "create_background_task": self._create_background_task,
-            "pause_background_task": self._pause_background_task,
-            "resume_background_task": self._resume_background_task,
-            "cancel_background_task": self._cancel_background_task,
-            "run_background_task": self._run_background_task,
-            "notifications": self._notifications_list,
-            "failed_background_tasks": self._failed_background_tasks,
-            "summarize_latest_run": self._summarize_latest_run,
-            "orchestration_plan": self._orchestration_plan,
-            "show_active_plan": self._show_active_plan,
-            "show_plan_steps": self._show_active_plan,
-            "cancel_plan": self._cancel_plan,
-            "retry_plan_step": self._retry_plan_step,
-            "provider_lane": self._provider_lane,
-            "external_provider_request": self._external_provider_request,
-            "propose_commit": self._propose_commit,
-            "create_branch": self._create_branch,
-            "commit_changes": self._commit_changes,
-            "task_history": self._task_history,
-        }.get(intent)
+        handler = self._intent_handlers().get(intent)
 
         if handler and intent != "general":
             await PendingToolIntentService(self.session).cancel_active_for_session(
@@ -514,9 +477,7 @@ class ChatService:
             )
 
         if handler:
-            body = await cast(Callable[..., Awaitable[str]], handler)(
-                principal, args, routing=routing, session_id=chat_session.id
-            )
+            body = await handler(principal, args, routing=routing, session_id=chat_session.id)
             if body.startswith("Blocked:"):
                 response = self._response(
                     body,
@@ -654,6 +615,15 @@ class ChatService:
         response: dict[str, Any],
     ) -> AsyncIterator[dict[str, Any]]:
         body = str(response["response"])
+        if response.get("agent_os_mission"):
+            if response.get("intent") == "agent_os_mission":
+                yield {"event": "token", "data": {"delta": "Running Agent OS mission…\n"}}
+            await self._persist_assistant(sessions, chat_session, response)
+            yield {
+                "event": "done",
+                "data": self._stream_done_payload(response),
+            }
+            return
         chunk_size = 24
         for index in range(0, len(body), chunk_size):
             yield {"event": "token", "data": {"delta": body[index : index + chunk_size]}}
@@ -661,22 +631,32 @@ class ChatService:
         await self._persist_assistant(sessions, chat_session, response)
         yield {
             "event": "done",
-            "data": {
-                "intent": response.get("intent", "general"),
-                "blocked": bool(response.get("blocked", False)),
-                "session_id": response.get("session_id"),
-                "token_usage": response.get("token_usage"),
-                "routing": response.get("routing"),
-                "active_project": response.get("active_project"),
-                "pending_tool_intent": response.get("pending_tool_intent"),
-                "response": response.get("response"),
-                "runtime_mode": response.get("runtime_mode"),
-                "selected_provider": response.get("selected_provider"),
-                "selected_model": response.get("selected_model"),
-                "fallback_reason": response.get("fallback_reason"),
-                "local_available": response.get("local_available"),
-            },
+            "data": self._stream_done_payload(response),
         }
+
+    def _stream_done_payload(self, response: dict[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "intent": response.get("intent", "general"),
+            "blocked": bool(response.get("blocked", False)),
+            "session_id": response.get("session_id"),
+            "token_usage": response.get("token_usage"),
+            "routing": response.get("routing"),
+            "active_project": response.get("active_project"),
+            "pending_tool_intent": response.get("pending_tool_intent"),
+            "response": response.get("response"),
+            "runtime_mode": response.get("runtime_mode"),
+            "selected_provider": response.get("selected_provider"),
+            "selected_model": response.get("selected_model"),
+            "fallback_reason": response.get("fallback_reason"),
+            "local_available": response.get("local_available"),
+        }
+        if response.get("agent_os_mission"):
+            payload["agent_os_mission"] = response["agent_os_mission"]
+        if response.get("task_id"):
+            payload["task_id"] = response["task_id"]
+        if response.get("timeline"):
+            payload["timeline"] = response["timeline"]
+        return payload
 
     async def _persist_partial_assistant(
         self,
@@ -1074,10 +1054,37 @@ class ChatService:
                 if value is not None:
                     extra[key] = value
             self._last_task_meta = None
+        if intent.startswith("agent_os_") and self._last_agent_mission_meta:
+            extra["agent_os_mission"] = self._last_agent_mission_meta
+            if self._last_agent_mission_meta.get("status") == "waiting_approval":
+                extra["pending_tool_intent"] = "agent_os_deploy"
+            self._last_agent_mission_meta = None
         if self._pending_tool_intent_type:
             extra["pending_tool_intent"] = self._pending_tool_intent_type
             self._pending_tool_intent_type = None
         return extra
+
+    def _store_agent_mission_payload(self, mission: AgentMission) -> None:
+        self._last_agent_mission_id = mission.mission_id
+        self._last_agent_mission_meta = build_agent_os_chat_payload(mission)
+
+    @staticmethod
+    def _approval_kind_for_mission(mission: AgentMission) -> str:
+        runtime = mission.artifacts.get("runtime") or mission.final_report.get("runtime", "web")
+        return "package" if runtime == "cli" else "deploy"
+
+    def _approval_recorded_message(self, mission: AgentMission) -> str:
+        if self._approval_kind_for_mission(mission) == "package":
+            return "Packaging approval recorded.\nPackaging step is prepared/stubbed in this build."
+        return (
+            "Deployment approval recorded.\n"
+            "Vercel deploy integration is prepared but not enabled in this build."
+        )
+
+    def _approval_skipped_message(self, mission: AgentMission) -> str:
+        is_package = self._approval_kind_for_mission(mission) == "package"
+        kind = "Packaging" if is_package else "Deployment"
+        return f"{kind} skipped."
 
     def _parse_scoped_personal_search(self, text: str) -> dict[str, str] | None:
         normalized = re.sub(r"\s+", " ", text.strip())
@@ -1555,7 +1562,7 @@ class ChatService:
             )
         svc = AgentMissionService(self.session, self.settings)
         mission = svc.run_mission(request, run_npm=True, clean_workspace=True, start_preview=True)
-        self._last_agent_mission_id = mission.mission_id
+        self._store_agent_mission_payload(mission)
         return svc.mission_timeline_text(mission.mission_id)
 
     async def _agent_os_deploy_yes(
@@ -1566,11 +1573,8 @@ class ChatService:
         if mission is None:
             return "No mission is awaiting deployment approval."
         mission = svc.deploy_mission(mission.mission_id)
-        self._last_agent_mission_id = mission.mission_id
-        return (
-            f"Deployment approved and prepared for {mission.final_report.get('app_name', 'app')}.\n"
-            f"Status: {mission.final_report.get('deployment_status', 'unknown')}"
-        )
+        self._store_agent_mission_payload(mission)
+        return self._approval_recorded_message(mission)
 
     async def _agent_os_deploy_no(
         self, principal: Principal, _args: dict[str, str], **_kw: Any
@@ -1580,8 +1584,8 @@ class ChatService:
         if mission is None:
             return "No mission is awaiting deployment approval."
         mission = svc.skip_deployment(mission.mission_id)
-        self._last_agent_mission_id = mission.mission_id
-        return "Deployment skipped. Your app remains available locally with preview."
+        self._store_agent_mission_payload(mission)
+        return self._approval_skipped_message(mission)
 
     async def _agent_os_preview(
         self, principal: Principal, _args: dict[str, str], **_kw: Any
@@ -2822,6 +2826,7 @@ class ChatService:
         selected_model: str | None = None,
         fallback_reason: str | None = None,
         local_available: bool | None = None,
+        agent_os_mission: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "response": body,
@@ -2844,6 +2849,8 @@ class ChatService:
             payload["active_project"] = active_project
         if pending_tool_intent:
             payload["pending_tool_intent"] = pending_tool_intent
+        if agent_os_mission:
+            payload["agent_os_mission"] = agent_os_mission
         if token_usage is not None:
             payload["token_usage"] = token_usage
         if routing is not None:

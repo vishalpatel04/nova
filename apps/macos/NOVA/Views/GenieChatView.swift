@@ -27,7 +27,15 @@ struct GenieChatView: View {
             }
             chatInputBar
         }
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(MacDesignTokens.glassStroke, lineWidth: 1)
+                )
+        )
+        .preferredColorScheme(.dark)
         .task {
             await appState.refreshRuntimeStatus()
             await appState.refreshRecentChatSessions()
@@ -174,6 +182,7 @@ struct GenieChatView: View {
                     }
                     ForEach(appState.chatMessages) { message in
                         ChatBubble(message: message)
+                            .environmentObject(appState)
                             .id(message.id)
                     }
                     if appState.isChatSending && !appState.isChatStreaming {
@@ -396,14 +405,25 @@ private struct TaskTimelineStrip: View {
 }
 
 private struct ChatBubble: View {
+    @EnvironmentObject private var appState: MacAppState
     let message: ChatMessage
     @State private var expanded = false
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 24) }
-            VStack(alignment: .leading, spacing: 6) {
-                if shouldCollapse {
+            VStack(alignment: .leading, spacing: 8) {
+                if let mission = message.agentOSMission {
+                    AgentOSMissionCardView(mission: mission) { action in
+                        AgentOSMissionActionHandler.perform(action, appState: appState)
+                    }
+                    if shouldShowFollowupText(for: mission) {
+                        Text(message.content)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else if shouldCollapse {
                     Text(expanded ? contentText : collapsedText)
                         .font(.caption)
                         .textSelection(.enabled)
@@ -419,21 +439,36 @@ private struct ChatBubble: View {
                         .textSelection(.enabled)
                 }
             }
-            .padding(10)
+            .padding(message.agentOSMission == nil ? 10 : 0)
             .foregroundStyle(foreground)
-            .background(background)
+            .background { bubbleBackground }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .opacity(message.isStreaming ? 0.92 : 1)
             if message.role != .user { Spacer(minLength: 24) }
         }
     }
 
+    private func shouldShowFollowupText(for mission: AgentOSMissionPayload) -> Bool {
+        let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != mission.text
+    }
+
+    @ViewBuilder
+    private var bubbleBackground: some View {
+        if message.agentOSMission == nil {
+            background
+        }
+    }
+
     private var contentText: String {
-        message.content.isEmpty && message.isStreaming ? "Working" : message.content
+        if message.content.isEmpty && message.isStreaming {
+            return "Running mission…"
+        }
+        return message.content
     }
 
     private var shouldCollapse: Bool {
-        contentText.count > 700
+        message.agentOSMission == nil && contentText.count > 700
     }
 
     private var collapsedText: String {

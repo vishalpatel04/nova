@@ -440,11 +440,28 @@ class ProviderRuntime:
 
     async def _resolve_ollama_model(self, provider: ProviderName) -> str:
         explicit = {
-            ProviderName.LOCAL: self.settings.nova_ollama_model,
+            ProviderName.LOCAL: self.settings.nova_local_model or self.settings.nova_ollama_model,
             ProviderName.QWEN: self.settings.nova_qwen_model,
             ProviderName.DEEPSEEK: self.settings.nova_deepseek_model,
         }.get(provider, "")
         if explicit:
+            available = await self._fetch_ollama_models(provider)
+            if available and explicit not in available:
+                for name in available:
+                    if name.startswith(explicit) or explicit.startswith(name.split(":")[0]):
+                        logger.info(
+                            "ollama_model_lane_fallback",
+                            provider=provider.value,
+                            requested=explicit,
+                            model=name,
+                        )
+                        return name
+                logger.warning(
+                    "ollama_model_lane_missing",
+                    provider=provider.value,
+                    requested=explicit,
+                    available=available,
+                )
             logger.info(
                 "ollama_model_explicit",
                 provider=provider.value,
