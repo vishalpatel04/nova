@@ -146,7 +146,25 @@ class AgentMissionRunner:
             app_request = parse_app_request(f"build a simple web app for {mission.user_request}")
         if app_request is None:
             mission.status = MissionStatus.FAILED
-            mission.final_report = {"summary": "Could not parse app build request."}
+            mission.final_report = {
+                "summary": "Could not parse app build request.",
+                "evidence_log": str(self.store._path(mission.mission_id)),
+            }
+            self.store.save(mission)
+            return mission
+
+        if app_request.requires_clarification:
+            append_timeline(
+                mission,
+                agent_id="prime",
+                display_name="Prime",
+                message="Clarification required before build",
+            )
+            mission.status = MissionStatus.COMPLETED
+            mission.final_report = {
+                "summary": app_request.clarification_message,
+                "evidence_log": str(self.store._path(mission.mission_id)),
+            }
             self.store.save(mission)
             return mission
 
@@ -189,13 +207,15 @@ class AgentMissionRunner:
                 "app_type": build.app_type,
                 "app_name": build.app_name,
                 "template_id": build.template_id,
+                "runtime": build.runtime,
             }
         )
 
+        engineer_label = "Backend Engineer" if build.runtime == "cli" else "Frontend Engineer"
         append_timeline(
             mission,
             agent_id="frontend_engineer",
-            display_name="Frontend Engineer",
+            display_name=engineer_label,
             message="Generated app files",
             evidence={"file_count": len(build.files_written), "template": build.template_id},
         )
@@ -208,11 +228,12 @@ class AgentMissionRunner:
                     "success": build.install.success,
                 }
             )
+            install_label = "python syntax check" if build.runtime == "cli" else "npm install"
             append_timeline(
                 mission,
                 agent_id="qa_engineer",
                 display_name="QA Engineer",
-                message=f"npm install: {'PASS' if build.install.success else 'FAIL'}",
+                message=f"{install_label}: {'PASS' if build.install.success else 'FAIL'}",
             )
 
         if build.build:
@@ -223,17 +244,19 @@ class AgentMissionRunner:
                     "success": build.build.success,
                 }
             )
+            validation_step = "python smoke test" if build.runtime == "cli" else "npm run build"
             mission.validation_results.append(
                 {
-                    "step": "npm run build",
+                    "step": validation_step,
                     "passed": build.build.success,
                 }
             )
+            build_label = "smoke test" if build.runtime == "cli" else "npm run build"
             append_timeline(
                 mission,
                 agent_id="qa_engineer",
                 display_name="QA Engineer",
-                message=f"npm run build: {'PASS' if build.build.success else 'FAIL'}",
+                message=f"{build_label}: {'PASS' if build.build.success else 'FAIL'}",
             )
 
         fixes_needed = not build.build_passed
@@ -254,6 +277,14 @@ class AgentMissionRunner:
         preview_log_path: str | None = None
         preview_pid: int | None = None
         preview_port: int | None = None
+
+        if build.runtime == "cli" and build.build_passed and build.run_command:
+            append_timeline(
+                mission,
+                agent_id="devops_deploy",
+                display_name="Deploy Engineer",
+                message=f"CLI app ready — run: {build.run_command}",
+            )
 
         if build.preview:
             preview_pid = build.preview.pid
@@ -292,11 +323,16 @@ class AgentMissionRunner:
                 "requires_approval": deploy_review.requires_approval,
             }
         )
+        approval_message = (
+            "Packaging requires approval"
+            if build.runtime == "cli"
+            else "Deployment requires approval"
+        )
         append_timeline(
             mission,
             agent_id="sentry",
             display_name="Sentry",
-            message="Deployment requires approval",
+            message=approval_message,
             evidence={"requires_approval": deploy_review.requires_approval},
         )
 
@@ -317,14 +353,21 @@ class AgentMissionRunner:
             "preview_log_path": preview_log_path,
             "preview_pid": preview_pid,
             "preview_port": preview_port,
+            "runtime": build.runtime,
+            "run_command": build.run_command,
             "deployment_status": "approval required" if build.build_passed else "blocked",
             "evidence_log": str(self.store._path(mission.mission_id)),
         }
+        prime_close = (
+            "App ready. Package this app? yes/no"
+            if build.runtime == "cli"
+            else "App ready. Deploy this app? yes/no"
+        )
         append_timeline(
             mission,
             agent_id="prime",
             display_name="Prime",
-            message="App ready. Deploy this app? yes/no",
+            message=prime_close,
         )
         self.store.save(mission)
         return mission

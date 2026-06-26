@@ -52,6 +52,8 @@ class BuildResult:
     app_type: str
     app_name: str
     template_id: str
+    runtime: str = "web"
+    run_command: str | None = None
 
 
 @dataclass
@@ -155,6 +157,9 @@ def build_app(
     start_preview: bool = True,
     project_path: Path | None = None,
 ) -> BuildResult:
+    if request.runtime == "cli":
+        return build_cli_app(request, project_path=project_path)
+
     spec = build_app_spec(request)
     root = project_path or project_path_for_request(request)
     files = write_app_files(spec, root)
@@ -186,6 +191,43 @@ def build_app(
         app_type=request.app_type,
         app_name=request.app_name,
         template_id=spec.template_id,
+        runtime="web",
+    )
+
+
+def build_cli_app(
+    request: AppRequest,
+    *,
+    project_path: Path | None = None,
+) -> BuildResult:
+    spec = build_app_spec(request)
+    root = project_path or project_path_for_request(request)
+    files = write_app_files(spec, root)
+    syntax_result = run_workspace_command(
+        ["python3", "-m", "py_compile", "calculator.py"],
+        cwd=root,
+    )
+    smoke_result: CommandResult | None = None
+    if syntax_result.success:
+        smoke_result = run_workspace_command(
+            ["python3", "calculator.py", "--smoke"],
+            cwd=root,
+        )
+    build_passed = bool(syntax_result.success and smoke_result and smoke_result.success)
+    run_command = f"python3 {root / 'calculator.py'}"
+    return BuildResult(
+        project_path=str(root),
+        files_written=files,
+        install=syntax_result,
+        build=smoke_result,
+        preview=None,
+        preview_url=None,
+        build_passed=build_passed,
+        app_type=request.app_type,
+        app_name=request.app_name,
+        template_id=spec.template_id,
+        runtime="cli",
+        run_command=run_command,
     )
 
 

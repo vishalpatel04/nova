@@ -15,7 +15,7 @@ from nova_core.agent_os.skills import list_skills
 from nova_core.agent_os.workspace import workspace_root
 from nova_core.memory.access_policy import AccessProfile
 from nova_core.memory.retrieval import format_retrieval_result
-from nova_core.orchestration.app_request import is_app_build_request, parse_app_request
+from nova_core.orchestration.app_request import is_app_build_intent, parse_app_request
 from nova_core.schemas.settings import Settings
 from nova_core.tools.personal_search import PersonalSearchTool
 
@@ -180,7 +180,7 @@ def parse_archive_search_query(text: str) -> str | None:
 
 
 def is_agent_os_mission_request(text: str) -> bool:
-    return is_app_build_request(text)
+    return is_app_build_intent(text)
 
 
 def normalize_build_app_request(short_name: str) -> str:

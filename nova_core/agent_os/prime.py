@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nova_core.orchestration.app_request import is_app_build_request, parse_app_request
+from nova_core.orchestration.app_request import is_app_build_intent, parse_app_request
 
 FORGE_SQUAD = (
     "product_planner",
@@ -29,7 +29,7 @@ class MissionClassification:
 
 def classify_request(user_request: str) -> MissionClassification:
     app_request = parse_app_request(user_request)
-    if app_request is not None or is_app_build_request(user_request):
+    if app_request is not None or is_app_build_intent(user_request):
         parsed = app_request or parse_app_request(f"build a simple web app for {user_request}")
         criteria: tuple[str, ...] = (
             "Working app generated in NOVA workspace",
@@ -63,4 +63,4 @@ def classify_request(user_request: str) -> MissionClassification:
 
 
 def is_app_build_mission(user_request: str) -> bool:
-    return classify_request(user_request).mission_type == "engineering.app_build"
+    return is_app_build_intent(user_request)
