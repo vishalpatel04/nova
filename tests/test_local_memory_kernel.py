@@ -141,7 +141,7 @@ async def test_chat_memory_status(auth_client: AsyncClient, paired_client_token)
     auth_client.headers["Authorization"] = f"Bearer {token}"
     resp = await auth_client.post("/api/v1/chat", json={"message": "memory status"})
     assert resp.status_code == 200
-    assert "Local memory status" in resp.json()["response"]
+    assert "NOVA memory status" in resp.json()["response"]
 
 
 @pytest.mark.asyncio

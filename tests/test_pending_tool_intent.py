@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.services.pending_tool_intents import PendingToolIntentService
 from apps.api.services.projects import ProjectService
 from nova_core.auth.principal import Principal
-from nova_core.models.enums import PendingToolIntentStatus, PendingToolIntentType
+from nova_core.models.enums import PendingToolIntentStatus
 from nova_core.models.orm import PendingToolIntent
 from nova_core.tools.pending_search import parse_scope_confirmation_reply
 
@@ -86,29 +86,45 @@ async def _chat(
     return resp.json()
 
 
+async def _seed_pending_computer_search(
+    auth_client: AsyncClient,
+    token: str,
+    db_session: AsyncSession,
+    device_id: str,
+    *,
+    query: str = "lund",
+    user_id: str = "arth",
+) -> str:
+    body = await _chat(auth_client, token, "help")
+    session_id = body["session_id"]
+    principal = Principal(
+        principal_type="device",
+        principal_id=device_id,
+        user_id=user_id,
+        device_id=device_id,
+        token_role="client",
+    )
+    svc = PendingToolIntentService(db_session)
+    await svc.create_scope_confirmation(principal, session_id=session_id, query=query)
+    await db_session.flush()
+    return session_id
+
+
 @pytest.mark.asyncio
-async def test_broad_search_creates_pending_intent(
+async def test_broad_search_routes_to_archive(
     auth_client: AsyncClient,
     paired_client_token: tuple[str, str],
     db_session: AsyncSession,
 ) -> None:
-    device_id, token = paired_client_token
+    _device_id, token = paired_client_token
     body = await _chat(auth_client, token, "search my computer for lund")
-    assert body.get("pending_tool_intent") == (
-        PendingToolIntentType.PERSONAL_SEARCH_SCOPE_CONFIRMATION.value
-    )
-    assert "Waiting for folder choice" in body["response"]
+    assert body["intent"] == "archive_search"
+    assert body.get("pending_tool_intent") is None
+    assert "File Explorer" not in body["response"]
+    assert "don't have direct access" not in body["response"].lower()
 
-    result = await db_session.execute(
-        select(PendingToolIntent).where(
-            PendingToolIntent.device_id == device_id,
-            PendingToolIntent.status == PendingToolIntentStatus.PENDING.value,
-        )
-    )
-    record = result.scalar_one()
-    assert record.payload_json["query"] == "lund"
-    session_id = body["session_id"]
-    assert record.session_id == session_id
+    result = await db_session.execute(select(PendingToolIntent))
+    assert result.scalars().all() == []
 
 
 @pytest.mark.asyncio
@@ -117,11 +133,11 @@ async def test_downloads_follow_up_executes_downloads_search(
     paired_client_token: tuple[str, str],
     personal_home: Path,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     _patch_search_roots(monkeypatch, personal_home)
-    _device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    session_id = first["session_id"]
+    device_id, token = paired_client_token
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
     second = await _chat(auth_client, token, "Downloads", session_id=session_id)
     assert second["intent"] == "safe_search"
     assert "Found" in second["response"] or "0 matches" in second["response"]
@@ -134,11 +150,12 @@ async def test_yes_executes_all_approved_search(
     paired_client_token: tuple[str, str],
     personal_home: Path,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     _patch_search_roots(monkeypatch, personal_home)
-    _device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    second = await _chat(auth_client, token, "yes", session_id=first["session_id"])
+    device_id, token = paired_client_token
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
+    second = await _chat(auth_client, token, "yes", session_id=session_id)
     assert second["intent"] == "safe_search"
     assert "Found" in second["response"]
 
@@ -150,8 +167,8 @@ async def test_no_cancels_pending_intent(
     db_session: AsyncSession,
 ) -> None:
     device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    second = await _chat(auth_client, token, "no", session_id=first["session_id"])
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
+    second = await _chat(auth_client, token, "no", session_id=session_id)
     assert second["intent"] == "pending_cancelled"
     assert "Search cancelled." in second["response"]
 
@@ -169,8 +186,7 @@ async def test_pending_intent_expires(
     db_session: AsyncSession,
 ) -> None:
     device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    session_id = first["session_id"]
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
     result = await db_session.execute(
         select(PendingToolIntent).where(PendingToolIntent.session_id == session_id)
     )
@@ -191,8 +207,7 @@ async def test_pending_intent_is_device_scoped(
     test_settings,
 ) -> None:
     device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    session_id = first["session_id"]
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
 
     other = Principal(
         principal_type="device",
@@ -220,9 +235,10 @@ async def test_pending_intent_is_device_scoped(
 async def test_pending_intent_is_session_scoped(
     auth_client: AsyncClient,
     paired_client_token: tuple[str, str],
+    db_session: AsyncSession,
 ) -> None:
     _device_id, token = paired_client_token
-    await _chat(auth_client, token, "search my computer for lund")
+    await _seed_pending_computer_search(auth_client, token, db_session, _device_id)
     other_session = await _chat(auth_client, token, "help")
     with patch(
         "apps.api.services.chat.ProviderRuntime.infer",
@@ -244,8 +260,7 @@ async def test_replay_follow_up_does_not_execute_twice(
 ) -> None:
     _patch_search_roots(monkeypatch, personal_home)
     device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
-    session_id = first["session_id"]
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
     second = await _chat(auth_client, token, "Downloads", session_id=session_id)
     assert second["intent"] == "safe_search"
     third = await _chat(auth_client, token, "Downloads", session_id=session_id)
@@ -308,14 +323,15 @@ async def test_plain_project_search_requires_active_project(
 async def test_protected_scope_remains_blocked_on_follow_up(
     auth_client: AsyncClient,
     paired_client_token: tuple[str, str],
+    db_session: AsyncSession,
 ) -> None:
     _device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, _device_id)
     second = await _chat(
         auth_client,
         token,
         "~/NOVA_VAULT",
-        session_id=first["session_id"],
+        session_id=session_id,
     )
     assert second["blocked"] is True or "protected" in second["response"].lower()
 
@@ -326,16 +342,17 @@ async def test_ollama_not_called_for_folder_choice_reply(
     paired_client_token: tuple[str, str],
     personal_home: Path,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     _patch_search_roots(monkeypatch, personal_home)
-    _device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
+    device_id, token = paired_client_token
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
     with patch(
         "apps.api.services.chat.ProviderRuntime.infer",
         new_callable=AsyncMock,
         return_value=_infer_result(),
     ) as infer_mock:
-        await _chat(auth_client, token, "Downloads", session_id=first["session_id"])
+        await _chat(auth_client, token, "Downloads", session_id=session_id)
         infer_mock.assert_not_called()
 
 
@@ -343,15 +360,16 @@ async def test_ollama_not_called_for_folder_choice_reply(
 async def test_unrelated_message_prompts_without_ollama(
     auth_client: AsyncClient,
     paired_client_token: tuple[str, str],
+    db_session: AsyncSession,
 ) -> None:
-    _device_id, token = paired_client_token
-    first = await _chat(auth_client, token, "search my computer for lund")
+    device_id, token = paired_client_token
+    session_id = await _seed_pending_computer_search(auth_client, token, db_session, device_id)
     with patch(
         "apps.api.services.chat.ProviderRuntime.infer",
         new_callable=AsyncMock,
         return_value=_infer_result(),
     ) as infer_mock:
-        second = await _chat(auth_client, token, "hello there", session_id=first["session_id"])
+        second = await _chat(auth_client, token, "hello there", session_id=session_id)
         infer_mock.assert_not_called()
         assert second["intent"] == "pending_scope_confirmation"
         assert second.get("pending_tool_intent")

@@ -13,6 +13,13 @@ from typing import Any, cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.services.agent_mission_service import (
+    AgentMissionService,
+    is_agent_os_mission_request,
+    is_memory_status_request,
+    is_system_memory_status_request,
+    parse_archive_search_query,
+)
 from apps.api.services.agent_plans import AgentPlanService
 from apps.api.services.approvals import ApprovalRequestService
 from apps.api.services.background_scheduler import BackgroundSchedulerService
@@ -170,6 +177,7 @@ class ChatService:
         self._provider_runtime = ProviderRuntime(settings)
         self._approval_svc = ApprovalRequestService(session, settings)
         self._last_task_meta: dict[str, Any] | None = None
+        self._last_agent_mission_id: str | None = None
         self._pending_active_project: str | None = None
         self._pending_tool_intent_type: str | None = None
 
@@ -275,6 +283,12 @@ class ChatService:
             "project_last_failure": self._project_last_failure,
             "project_open_loops": self._project_open_loops,
             "project_remember_decision": self._project_remember_decision,
+            "archive_search": self._archive_search,
+            "agent_os_mission": self._agent_os_mission,
+            "agent_os_mission_status": self._agent_os_mission_status,
+            "agent_os_timeline": self._agent_os_timeline,
+            "agent_os_approve_deploy": self._agent_os_approve_deploy,
+            "system_memory_status": self._system_memory_status,
         }.get(intent)
 
         if handler and intent != "general":
@@ -668,6 +682,34 @@ class ChatService:
         if lowered in {"system status", "status", "system_status"}:
             return "system_status", {}
 
+        if is_system_memory_status_request(text):
+            return "system_memory_status", {}
+
+        if is_memory_status_request(text):
+            return "memory_status", {}
+
+        if is_agent_os_mission_request(text):
+            return "agent_os_mission", {"request": text.strip()}
+
+        if lowered in {"show agent timeline", "agent timeline"}:
+            return "agent_os_timeline", {}
+
+        if lowered in {"mission status", "show mission status"}:
+            return "agent_os_mission_status", {}
+
+        if lowered in {"approve deployment", "approve deploy"}:
+            return "agent_os_approve_deploy", {}
+
+        archive_query = parse_archive_search_query(text)
+        if archive_query is not None:
+            return "archive_search", {"query": archive_query}
+
+        recall_match = re.match(r"^what do you remember about (.+?)\??$", text, re.I)
+        if recall_match and recall_match.group(1).strip().lower() not in {"me", "myself"}:
+            topic = recall_match.group(1).strip()
+            if "from my files" not in topic.lower():
+                return "memory_recall", {"topic": topic}
+
         if lowered in {"connected devices", "devices", "list devices"}:
             return "devices", {}
 
@@ -697,7 +739,7 @@ class ChatService:
 
         if lowered.startswith("search my computer for "):
             pattern = text[len("search my computer for ") :].strip()
-            return "search_computer_prompt", {"pattern": pattern}
+            return "archive_search", {"query": pattern}
 
         if lowered in {"what do you remember about me", "what do you remember about me?"}:
             return "memory_summary", {}
@@ -724,9 +766,6 @@ class ChatService:
         if lowered in {"disable broad local knowledge", "disable broad local"}:
             return "memory_disable_broad", {}
 
-        if lowered in {"memory status", "show memory status"}:
-            return "memory_status", {}
-
         if lowered in {"index my mac", "index my mac."}:
             return "memory_index_mac", {}
 
@@ -740,11 +779,7 @@ class ChatService:
             return "memory_index_progress", {}
 
         if lowered.startswith("search my memory for "):
-            return "memory_search", {"query": text[len("search my memory for ") :].strip()}
-
-        recall_match = re.match(r"^what do you remember about (.+?)\??$", text, re.I)
-        if recall_match and recall_match.group(1).strip().lower() not in {"me", "myself"}:
-            return "memory_recall", {"topic": recall_match.group(1).strip()}
+            return "archive_search", {"query": text[len("search my memory for ") :].strip()}
 
         if lowered.startswith("forget everything about "):
             return "memory_forget_topic", {"topic": text[len("forget everything about ") :].strip()}
@@ -781,11 +816,11 @@ class ChatService:
 
         if lowered.startswith("search my mac for "):
             pattern = text[len("search my mac for ") :].strip()
-            return "search_computer_prompt", {"pattern": pattern}
+            return "archive_search", {"query": pattern}
 
         broad_search = self._parse_broad_personal_search(text)
         if broad_search is not None:
-            return "search_computer_prompt", broad_search
+            return "archive_search", {"query": broad_search.get("pattern", "")}
 
         if lowered.startswith("search all approved folders for "):
             pattern = text[len("search all approved folders for ") :].strip()
@@ -803,7 +838,7 @@ class ChatService:
                 return "safe_search", {"pattern": pattern, "scope": "all_approved"}
             if lowered_remainder.startswith("my computer for "):
                 pattern = remainder[len("my computer for ") :].strip()
-                return "search_computer_prompt", {"pattern": pattern}
+                return "archive_search", {"query": pattern}
             in_match = re.match(r"^(.+?)\s+in\s+(.+)$", remainder, re.I)
             if in_match:
                 pattern = in_match.group(1).strip()
@@ -1320,19 +1355,8 @@ class ChatService:
         )
 
     async def _memory_status(self, principal: Principal, _args: dict[str, str], **_kw: Any) -> str:
-        overview = await self._memory_kernel().status_overview(principal.user_id)
-        return (
-            f"Local memory status (local-only):\n"
-            f"- Access profile: {overview['access_profile']}\n"
-            f"- Indexing paused: {overview['indexing_paused']}\n"
-            f"- Documents discovered: {overview['documents_discovered']}\n"
-            f"- Documents indexed: {overview['documents_indexed']}\n"
-            f"- Chunks: {overview['chunks']}\n"
-            f"- Entities: {overview['entities']}\n"
-            f"- Relationships: {overview['relationships']}\n"
-            f"- Pending jobs: {overview['pending_jobs']}\n"
-            f"- Embeddings: {overview['embedding_health']}"
-        )
+        svc = AgentMissionService(self.session, self.settings)
+        return await svc.memory_status_text(principal.user_id)
 
     async def _memory_index_mac(
         self, principal: Principal, _args: dict[str, str], **_kw: Any
@@ -1473,6 +1497,75 @@ class ChatService:
             text=text,
         )
         return f"Recorded project decision: {text}"
+
+    async def _archive_search(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        query = args.get("query", "").strip()
+        if not query:
+            return "Usage: search my Mac for <topic>"
+        svc = AgentMissionService(self.session, self.settings)
+        return await svc.archive_search(principal.user_id, query)
+
+    async def _agent_os_mission(
+        self, principal: Principal, args: dict[str, str], **_kw: Any
+    ) -> str:
+        request = args.get("request", "").strip()
+        if not request:
+            return "Usage: build a calculator app, test it, preview it, and prepare deployment"
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.run_mission(request, run_npm=True, clean_workspace=True)
+        self._last_agent_mission_id = mission.mission_id
+        return svc.mission_timeline_text(mission.mission_id)
+
+    async def _agent_os_mission_status(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if not mission_id:
+            return "No recent Agent OS mission in this session."
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.get_mission(mission_id)
+        if mission is None:
+            return f"Mission not found: {mission_id}"
+        return (
+            f"Mission {mission.mission_id}\n"
+            f"Status: {mission.status.value}\n"
+            f"Type: {mission.mission_type}\n"
+            f"Build: {mission.final_report.get('build_status', 'unknown')}\n"
+            f"Deployment: {mission.final_report.get('deployment_status', 'unknown')}"
+        )
+
+    async def _agent_os_timeline(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if not mission_id:
+            return "No recent Agent OS mission timeline."
+        svc = AgentMissionService(self.session, self.settings)
+        return svc.mission_timeline_text(mission_id)
+
+    async def _agent_os_approve_deploy(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if not mission_id:
+            return "No mission awaiting deployment approval."
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.approve_deployment(mission_id)
+        return (
+            f"Deployment approved for mission {mission.mission_id}. "
+            "External deploy remains manual in v1."
+        )
+
+    async def _system_memory_status(
+        self, principal: Principal, _args: dict[str, str], **_kw: Any
+    ) -> str:
+        import platform
+        import subprocess
+
+        if platform.system() != "Darwin":
+            return "System memory status is only available on macOS in this build."
+        proc = subprocess.run(["vm_stat"], capture_output=True, text=True, check=False)
+        return f"System memory status (RAM):\n{proc.stdout[:1200]}"
 
     def _parse_memory_fact(self, statement: str) -> dict[str, str]:
         text = re.sub(r"\s+", " ", statement.strip()).rstrip(".")

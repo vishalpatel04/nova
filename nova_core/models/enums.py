@@ -263,6 +263,7 @@ class PendingToolIntentType(StrEnum):
 class MemoryAccessProfile(StrEnum):
     MINIMAL = "minimal"
     BROAD_LOCAL = "broad_local"
+    FULL_LOCAL = "full_local"
     CUSTOM = "custom"
 
 

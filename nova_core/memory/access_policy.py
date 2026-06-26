@@ -14,6 +14,7 @@ from nova_core.memory.vault import is_vault_path
 class AccessProfile(StrEnum):
     MINIMAL = "minimal"
     BROAD_LOCAL = "broad_local"
+    FULL_LOCAL = "full_local"
     CUSTOM = "custom"
 
 
@@ -36,7 +37,7 @@ class AccessPolicy:
     def allowed_roots(self) -> list[Path]:
         if self.profile == AccessProfile.MINIMAL:
             roots = [Path(os.path.expanduser(p)).resolve() for p in MINIMAL_ROOTS]
-        elif self.profile == AccessProfile.BROAD_LOCAL:
+        elif self.profile in {AccessProfile.BROAD_LOCAL, AccessProfile.FULL_LOCAL}:
             roots = [Path.home().resolve()]
         else:
             roots = list(self.include_paths)

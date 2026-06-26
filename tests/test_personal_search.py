@@ -217,7 +217,8 @@ async def test_chat_search_computer_prompt(
         json={"message": "search my computer for lund"},
     )
     assert resp.status_code == 200
-    assert "waiting for folder choice" in resp.json()["response"].lower()
+    assert resp.json()["intent"] == "archive_search"
+    assert "File Explorer" not in resp.json()["response"]
 
 
 def test_demo_helpers_restore_present() -> None:
