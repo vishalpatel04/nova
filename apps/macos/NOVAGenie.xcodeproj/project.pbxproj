@@ -21,6 +21,7 @@
 		EFCDFF8C4F48C9A752977924 /* AgentOSMissionPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */; };
 		32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */; };
 		F3ED20E55985D1B7024C6E2C /* OrbitEmailPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92418524E13053C3D531FCFC /* OrbitEmailPayload.swift */; };
+		B640341F5E137347ADFD7262 /* WarRoomModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5C5EBA954A40A167EA5D6D /* WarRoomModels.swift */; };
 		AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */; };
 		79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB55D0EC448543D6089692EC /* ChatStreamClient.swift */; };
 		C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */; };
@@ -58,6 +59,7 @@
 		758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */; };
 		0050D27810CD0D08B275F38A /* OrbitEmailCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2035E340C659180DE927A5 /* OrbitEmailCardView.swift */; };
 		CF5AD2EB429331F0CB77138F /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2121C9974740E13D3031FEE6 /* SessionListView.swift */; };
+		A475E922E61ABD8491CE35D0 /* WarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 582FDCC322EE411C730F2825 /* WarRoomView.swift */; };
 		D1154151644D4118FB9153EB /* AVFoundationVoiceAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */; };
 		000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */; };
 		F93B4D777549383DE42284AE /* VoiceRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */; };
@@ -89,6 +91,7 @@
 		62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/AgentOSMissionPayload.swift"; sourceTree = "<group>"; };
 		82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ChatMessage.swift"; sourceTree = "<group>"; };
 		92418524E13053C3D531FCFC /* OrbitEmailPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/OrbitEmailPayload.swift"; sourceTree = "<group>"; };
+		CB5C5EBA954A40A167EA5D6D /* WarRoomModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/WarRoomModels.swift"; sourceTree = "<group>"; };
 		8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NOVAGenieApp.swift"; sourceTree = "<group>"; };
 		CB55D0EC448543D6089692EC /* ChatStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/ChatStreamClient.swift"; sourceTree = "<group>"; };
 		5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Networking/MacMissionStreamClient.swift"; sourceTree = "<group>"; };
@@ -126,6 +129,7 @@
 		71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/NovaOrbStateMachine.swift"; sourceTree = "<group>"; };
 		DA2035E340C659180DE927A5 /* OrbitEmailCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/OrbitEmailCardView.swift"; sourceTree = "<group>"; };
 		2121C9974740E13D3031FEE6 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/SessionListView.swift"; sourceTree = "<group>"; };
+		582FDCC322EE411C730F2825 /* WarRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/WarRoomView.swift"; sourceTree = "<group>"; };
 		448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/AVFoundationVoiceAdapter.swift"; sourceTree = "<group>"; };
 		0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceInterfaces.swift"; sourceTree = "<group>"; };
 		AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Voice/VoiceRuntime.swift"; sourceTree = "<group>"; };
@@ -170,6 +174,7 @@
 				62662332D6545887E3F12136 /* AgentOSMissionPayload.swift */,
 				82103A34E4C7A014AF92E3B9 /* ChatMessage.swift */,
 				92418524E13053C3D531FCFC /* OrbitEmailPayload.swift */,
+				CB5C5EBA954A40A167EA5D6D /* WarRoomModels.swift */,
 				8FF19542C96422479BCFCE18 /* NOVAGenieApp.swift */,
 				CB55D0EC448543D6089692EC /* ChatStreamClient.swift */,
 				5FC4BE7067D5D72F3120795E /* MacMissionStreamClient.swift */,
@@ -207,6 +212,7 @@
 				71D5541B352E8AC0CE887144 /* NovaOrbStateMachine.swift */,
 				DA2035E340C659180DE927A5 /* OrbitEmailCardView.swift */,
 				2121C9974740E13D3031FEE6 /* SessionListView.swift */,
+				582FDCC322EE411C730F2825 /* WarRoomView.swift */,
 				448207A17CB9E8D87827A30F /* AVFoundationVoiceAdapter.swift */,
 				0B84B75D134CE9F6B8B95E3C /* VoiceInterfaces.swift */,
 				AA51421F64B717DD8F1FAA84 /* VoiceRuntime.swift */,
@@ -349,6 +355,7 @@
 				EFCDFF8C4F48C9A752977924 /* AgentOSMissionPayload.swift in Sources */,
 				32C5A8C6063098A23AD007B0 /* ChatMessage.swift in Sources */,
 				F3ED20E55985D1B7024C6E2C /* OrbitEmailPayload.swift in Sources */,
+				B640341F5E137347ADFD7262 /* WarRoomModels.swift in Sources */,
 				AEA86DE36028968D6A2E2AF7 /* NOVAGenieApp.swift in Sources */,
 				79A1740C6A7ED91755E9FA07 /* ChatStreamClient.swift in Sources */,
 				C0EC5CB6F5EC6E05030CF3B8 /* MacMissionStreamClient.swift in Sources */,
@@ -386,6 +393,7 @@
 				758A5B96CB2D2445048EE780 /* NovaOrbStateMachine.swift in Sources */,
 				0050D27810CD0D08B275F38A /* OrbitEmailCardView.swift in Sources */,
 				CF5AD2EB429331F0CB77138F /* SessionListView.swift in Sources */,
+				A475E922E61ABD8491CE35D0 /* WarRoomView.swift in Sources */,
 				D1154151644D4118FB9153EB /* AVFoundationVoiceAdapter.swift in Sources */,
 				000CB4FA13560EB940F3BE24 /* VoiceInterfaces.swift in Sources */,
 				F93B4D777549383DE42284AE /* VoiceRuntime.swift in Sources */,

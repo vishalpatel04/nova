@@ -77,6 +77,13 @@ def cmd_models(args: argparse.Namespace) -> int:
         print("Recommended lanes:")
         for lane, model in recommend_lanes(settings).items():
             print(f"- {lane}: {model}")
+        from nova_core.providers.reasoning_lane import anthropic_configured
+
+        if anthropic_configured(settings):
+            print(
+                "- anthropic_reasoning: Claude lane available for clarification/review "
+                f"({settings.nova_anthropic_model})"
+            )
         return 0
     if getattr(args, "set_lane", None):
         lane = args.set_lane
@@ -111,6 +118,16 @@ def cmd_models(args: argparse.Namespace) -> int:
             f"- {row.lane}: configured={row.configured} "
             f"installed={row.installed} recommended={row.recommended}"
         )
+    from nova_core.providers.reasoning_lane import anthropic_status_redacted
+
+    anthropic = anthropic_status_redacted(settings)
+    print("\nAnthropic reasoning lane:")
+    print(f"- enabled={anthropic['enabled']} configured={anthropic['configured']}")
+    print(f"- model={anthropic['model']} api_key={anthropic['api_key']}")
+    print(
+        f"- reasoning_provider={anthropic['reasoning_provider']} "
+        f"review_provider={anthropic['review_provider']}"
+    )
     print("\nInstalled Ollama models:")
     if installed:
         for name in installed:
@@ -118,6 +135,41 @@ def cmd_models(args: argparse.Namespace) -> int:
     else:
         print("- (none reachable — start Ollama or run: nova pull-model <name>)")
     return 0
+
+
+def cmd_models_test_anthropic(_: argparse.Namespace) -> int:
+    from nova_core.providers.reasoning_lane import anthropic_configured, anthropic_status_redacted
+    from nova_core.providers.runtime import InferenceRequest, ProviderRuntime
+
+    settings = Settings()
+    status = anthropic_status_redacted(settings)
+    if not anthropic_configured(settings):
+        print("Anthropic test: SKIPPED (not configured)")
+        print("Set NOVA_ANTHROPIC_ENABLED=true and ANTHROPIC_API_KEY in .env")
+        return 1
+
+    async def _run() -> int:
+        runtime = ProviderRuntime(settings)
+        try:
+            result = await runtime.infer_reasoning_lane(
+                InferenceRequest(
+                    prompt="Return OK",
+                    system_prompt="Reply with exactly OK and nothing else.",
+                    intent="anthropic_health_check",
+                ),
+                purpose="review",
+            )
+        except Exception:
+            print("Anthropic test: FAIL")
+            return 1
+        if result.error or "ok" not in result.content.lower():
+            print("Anthropic test: FAIL")
+            return 1
+        print("Anthropic test: OK")
+        print(f"model={status['model']} provider={result.provider.value}")
+        return 0
+
+    return asyncio.run(_run())
 
 
 def cmd_forge_engines(_: argparse.Namespace) -> int:
@@ -437,6 +489,8 @@ def main() -> int:
 
     sub.add_parser("status").set_defaults(func=cmd_status)
     models_p = sub.add_parser("models")
+    models_sub = models_p.add_subparsers(dest="models_command")
+    models_sub.add_parser("test-anthropic").set_defaults(func=cmd_models_test_anthropic)
     models_p.add_argument("--recommend", action="store_true")
     models_p.add_argument("--set-lane", default=None)
     models_p.add_argument("model_name", nargs="?", default="")

@@ -160,14 +160,15 @@ async def generate_clarification_plan(
     runtime = ProviderRuntime(settings)
     prompt = _build_qwen_prompt(request)
     try:
-        result = await runtime.infer(
+        result = await runtime.infer_reasoning_lane(
             InferenceRequest(
                 prompt=prompt,
                 system_prompt=(
                     "You output strict JSON only for NOVA Agent OS clarification planning."
                 ),
                 intent="app_spec_clarification",
-            )
+            ),
+            purpose="reasoning",
         )
         if result.error or not result.content.strip():
             return deterministic_plan(request)
@@ -196,7 +197,7 @@ def _forge_engine_clarification_block(request: AppRequest) -> list[str]:
         f"Complexity: {suggestion.complexity}",
         "This may exceed template scaffolding (auth/database/backend).",
         suggestion.reason,
-        "Forge can delegate to OpenHands, Claude Code, or Codex when configured.",
+        "Forge can delegate to OpenHands, Claude Code, Codex, or Cursor when configured.",
     ]
     if suggestion.suggest_external:
         lines.append(

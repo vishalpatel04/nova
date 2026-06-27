@@ -151,6 +151,35 @@ class ProviderRuntime:
         )
         return self._local_degraded_response(request, last_error, last_reason)
 
+    async def infer_reasoning_lane(
+        self,
+        request: InferenceRequest,
+        *,
+        purpose: str = "reasoning",
+    ) -> InferenceResult:
+        """Prefer Anthropic for reasoning/review when configured; else local chain."""
+        from nova_core.providers.reasoning_lane import resolve_provider_lane
+
+        preferred = resolve_provider_lane(self.settings, purpose=purpose)
+        if preferred == ProviderName.ANTHROPIC and self._configured(ProviderName.ANTHROPIC):
+            try:
+                result = await self._infer_anthropic(request)
+                return InferenceResult(
+                    provider=result.provider,
+                    model=result.model,
+                    content=result.content,
+                    mode=result.mode,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    fallback_used=False,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "provider_reasoning_lane_fallback",
+                    reason=str(exc)[:120],
+                )
+        return await self.infer(request)
+
     async def stream(
         self,
         request: InferenceRequest,
@@ -387,7 +416,9 @@ class ProviderRuntime:
         if provider == ProviderName.OPENAI:
             return self.paid_enabled and bool(self.settings.nova_openai_api_key)
         if provider == ProviderName.ANTHROPIC:
-            return self.paid_enabled and bool(self.settings.nova_anthropic_api_key)
+            return self.settings.nova_anthropic_enabled and bool(
+                self.settings.nova_anthropic_api_key
+            )
         return False
 
     def _base_url(self, provider: ProviderName) -> str:
@@ -591,7 +622,7 @@ class ProviderRuntime:
             "x-api-key": self.settings.nova_anthropic_api_key,
             "anthropic-version": "2023-06-01",
         }
-        model = "claude-3-5-haiku-latest"
+        model = self.settings.nova_anthropic_model or "claude-3-5-sonnet-latest"
         payload = {
             "model": model,
             "max_tokens": 800,

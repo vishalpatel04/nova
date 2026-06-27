@@ -5,6 +5,7 @@ from __future__ import annotations
 from nova_core.forge.engines.base import ForgeEngine
 from nova_core.forge.engines.claude_code import ClaudeCodeEngine
 from nova_core.forge.engines.codex_cli import CodexCliEngine
+from nova_core.forge.engines.cursor_cli import CursorCliEngine
 from nova_core.forge.engines.deterministic_template import DeterministicTemplateEngine
 from nova_core.forge.engines.openhands import OpenHandsEngine
 from nova_core.schemas.settings import Settings
@@ -17,6 +18,7 @@ def list_engines(settings: Settings | None = None) -> list[ForgeEngine]:
         OpenHandsEngine(settings),
         ClaudeCodeEngine(settings),
         CodexCliEngine(settings),
+        CursorCliEngine(settings),
     ]
 
 

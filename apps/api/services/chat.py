@@ -56,6 +56,7 @@ from nova_core.capabilities.resolver import (
     cloud_file_resolution,
     resolve_chat_message,
 )
+from nova_core.chat.mentions import parse_agent_mention, route_mention_intent
 from nova_core.devices.availability import get_worker_availability
 from nova_core.forge.engines.registry import get_engine
 from nova_core.forge.selection_flow import (
@@ -286,6 +287,8 @@ class ChatService:
             "agent_os_preview": self._agent_os_preview,
             "system_memory_status": self._system_memory_status,
             "orbit_email_draft": self._orbit_email_draft,
+            "sentry_summary": self._sentry_summary,
+            "qa_status": self._qa_status,
             "orbit_email_edit": self._orbit_email_edit,
             "orbit_email_send_yes": self._orbit_email_send_yes,
             "orbit_email_send_no": self._orbit_email_send_no,
@@ -1008,6 +1011,12 @@ class ChatService:
 
     def _parse_intent(self, text: str) -> tuple[str, dict[str, str]]:
         lowered = text.lower().strip()
+
+        agent, body = parse_agent_mention(text)
+        if agent:
+            routed = route_mention_intent(agent, body)
+            if routed is not None:
+                return routed
 
         if lowered in {"help", "?", "commands", "what can you do", "what can you do?"}:
             return "help", {}
@@ -2341,6 +2350,62 @@ class ChatService:
         if mission is None or not mission.preview_url:
             return "No verified preview URL for the latest app mission."
         return f"Preview: {mission.preview_url}"
+
+    async def _sentry_summary(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        lines = ["Sentry approval summary:"]
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if mission_id:
+            svc = AgentMissionService(self.session, self.settings)
+            mission = svc.get_mission(mission_id)
+            if mission is not None:
+                if mission.status.value == "waiting_approval":
+                    runtime = mission.artifacts.get("runtime") or mission.final_report.get(
+                        "runtime", "web"
+                    )
+                    kind = "package" if runtime == "cli" else "deploy"
+                    lines.append(f"- Mission {mission_id}: awaiting {kind} approval")
+                else:
+                    deploy = mission.final_report.get("deployment_status", "unknown")
+                    lines.append(
+                        f"- Mission {mission_id}: status={mission.status.value}, "
+                        f"deployment={deploy}"
+                    )
+        orbit_svc = OrbitEmailService(self.settings)
+        if orbit_svc.latest_awaiting_send() is not None:
+            lines.append("- Orbit: investor email draft awaiting send approval")
+        session_id = _kw.get("session_id")
+        if session_id:
+            pending_svc = PendingToolIntentService(self.session)
+            pending = await pending_svc.get_active(principal, str(session_id))
+            if pending is not None:
+                lines.append(f"- Pending tool intent: {pending.intent_type}")
+        if len(lines) == 1:
+            lines.append("- No pending approvals in this session.")
+        question = args.get("request", "").strip()
+        if question and len(lines) == 2 and lines[1].startswith("- No pending"):
+            return (
+                "Sentry: nothing requires approval right now. "
+                "Deploy, package, and external send actions always require explicit approval."
+            )
+        return "\n".join(lines)
+
+    async def _qa_status(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if not mission_id:
+            return "QA: no recent Agent OS mission to validate in this session."
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.get_mission(mission_id)
+        if mission is None:
+            return f"QA: mission not found: {mission_id}"
+        report = mission.final_report
+        build = report.get("build_status", "UNKNOWN")
+        commands = report.get("validation_commands") or []
+        cmd_text = ", ".join(commands) if commands else "project-aware validation"
+        if str(build).upper() in {"PASS", "SKIPPED"}:
+            return f"QA: validation passed ({cmd_text}). Build status: {build}."
+        if str(build).upper() == "FAIL":
+            return f"QA: validation failed ({cmd_text}). Build status: {build}."
+        return f"QA: build status {build}. Validation commands: {cmd_text}."
 
     async def _agent_os_mission_status(
         self, principal: Principal, _args: dict[str, str], **_kw: Any

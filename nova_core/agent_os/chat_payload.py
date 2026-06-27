@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from nova_core.agent_os.agent_reports import build_agent_reports, build_war_room_roster
 from nova_core.agent_os.models import AgentMission, MissionStatus
 
 
@@ -119,12 +120,24 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
             }
         )
 
+    forge_engine = report.get("forge_engine") or (
+        (mission.artifacts.get("mission_graph") or {}).get("engine_selected")
+    )
+    agent_reports = build_agent_reports(agent_timeline)
+    war_room_roster = build_war_room_roster(
+        agent_timeline,
+        forge_engine=str(forge_engine or ""),
+        mission_status=mission.status.value,
+    )
+
     return {
         "type": "agent_os_mission",
         "mission_id": mission.mission_id,
         "status": mission.status.value,
         "mission_title": mission.user_request,
         "agent_timeline": agent_timeline,
+        "agent_reports": agent_reports,
+        "war_room_roster": war_room_roster,
         "graph_nodes": graph_nodes,
         "mission_graph_nodes": graph_nodes,
         "result": {

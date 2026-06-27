@@ -12,7 +12,21 @@ final class MacAppState: ObservableObject {
         case pairing
     }
 
+    enum ChatLayoutMode: String, CaseIterable {
+        case compact
+        case warRoom = "war_room"
+
+        var displayName: String {
+            switch self {
+            case .compact: return "Chat"
+            case .warRoom: return "War Room"
+            }
+        }
+    }
+
     @Published var voiceMode: VoiceMode = .primeOnly
+    @Published var chatLayoutMode: ChatLayoutMode = .warRoom
+    @Published var selectedWarRoomAgentId: String?
     @Published var isExpanded = false
     @Published var workerHealth: WorkerHealth = .unknown
     @Published var apiBaseURL: String

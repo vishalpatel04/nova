@@ -15,6 +15,8 @@ protocol CompactWindowCoordinating: AnyObject {
 final class CompactWindowCoordinator: NSObject, CompactWindowCoordinating, NSWindowDelegate {
     static let defaultWidth: CGFloat = 920
     static let defaultHeight: CGFloat = 760
+    static let warRoomMinimumWidth: CGFloat = 1000
+    static let warRoomMinimumHeight: CGFloat = 760
     static let minimumWidth: CGFloat = 720
     static let minimumHeight: CGFloat = 560
 
@@ -45,7 +47,9 @@ final class CompactWindowCoordinator: NSObject, CompactWindowCoordinating, NSWin
         window.identifier = NSUserInterfaceItemIdentifier(stableWindowIdentifier)
         window.title = "NOVA"
         window.setContentSize(NSSize(width: Self.defaultWidth, height: Self.defaultHeight))
-        window.minSize = NSSize(width: Self.minimumWidth, height: Self.minimumHeight)
+        let minW = appState.chatLayoutMode == .warRoom ? Self.warRoomMinimumWidth : Self.minimumWidth
+        let minH = appState.chatLayoutMode == .warRoom ? Self.warRoomMinimumHeight : Self.minimumHeight
+        window.minSize = NSSize(width: minW, height: minH)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false

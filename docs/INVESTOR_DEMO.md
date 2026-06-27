@@ -19,7 +19,21 @@ Optional demo pacing (reveals timeline steps gradually — real build still runs
 export NOVA_DEMO_PACING=true
 ```
 
-Open **NOVAGenie** (920×760 default window).
+Open **NOVAGenie** (920×760 default window; **War Room** mode uses 1000×760 minimum).
+
+## War Room Demo
+
+1. Open NOVAGenie and select **War Room** in the header toggle (default for investor demo).
+2. Ask: `build a landing page for SusCo` — agents report in the group chat (Prime, Archive, Forge, QA, Sentry).
+3. Open **Preview** from the right MissionGraph / Evidence panel.
+4. Ask: `@Orbit draft an investor email about this app` — Orbit reports draft status in chat.
+5. Ask: `@Sentry what needs approval?` — Sentry summarizes deploy/send gates.
+6. Ask: `build a proper expense tracker with login and database` — NOVA offers Forge engines (Codex / Cursor / OpenHands).
+7. Use Codex only if live limits allow; otherwise reply `use deterministic fallback`.
+
+```bash
+bash scripts/demo_war_room_payload.sh
+```
 
 ## 2. Landing page with clarification
 
@@ -80,6 +94,7 @@ bash scripts/demo_investor_end_to_end.sh
 bash scripts/demo_investor_end_to_end.sh
 bash scripts/demo_novagenie_chat_agent_os.sh
 bash scripts/demo_agent_os_calculator.sh
+bash scripts/demo_war_room_payload.sh
 ```
 
 ## WhatsApp (future)

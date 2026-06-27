@@ -23,6 +23,7 @@ _EXPLICIT_ENGINE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\buse claude code\b"), "claude_code_cli"),
     (re.compile(r"(?i)\buse claude\b"), "claude_code_cli"),
     (re.compile(r"(?i)\buse codex\b"), "codex_cli"),
+    (re.compile(r"(?i)\buse cursor\b"), "cursor_cli"),
     (re.compile(r"(?i)\bimprove this app\b"), "openhands"),
     (re.compile(r"(?i)\bmake it real\b"), "openhands"),
 )

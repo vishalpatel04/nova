@@ -11,6 +11,13 @@ struct CompactNOVAWindowRootView: View {
                 MenuBarView()
             }
         }
-        .frame(minWidth: 720, idealWidth: 920, maxWidth: 1200, minHeight: 560, idealHeight: 760, maxHeight: 1000)
+        .frame(
+            minWidth: appState.chatLayoutMode == .warRoom ? 1000 : 720,
+            idealWidth: appState.chatLayoutMode == .warRoom ? 1100 : 920,
+            maxWidth: 1400,
+            minHeight: appState.chatLayoutMode == .warRoom ? 760 : 560,
+            idealHeight: 760,
+            maxHeight: 1000
+        )
     }
 }

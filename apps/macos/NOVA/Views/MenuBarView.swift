@@ -9,6 +9,8 @@ struct MenuBarView: View {
             Divider()
             if appState.shouldShowPairing {
                 CompactPairingView()
+            } else if appState.chatLayoutMode == .warRoom && appState.isExpanded {
+                WarRoomView()
             } else {
                 GenieChatView(compact: !appState.isExpanded)
             }
@@ -37,6 +39,14 @@ struct MenuBarView: View {
                 }
             }
             Spacer(minLength: 8)
+            if !appState.shouldShowPairing {
+                Picker("Layout", selection: $appState.chatLayoutMode) {
+                    Text("Chat").tag(MacAppState.ChatLayoutMode.compact)
+                    Text("War Room").tag(MacAppState.ChatLayoutMode.warRoom)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+            }
             ProviderStatusBadge(
                 healthy: appState.providerHealthy,
                 label: appState.providerBadge

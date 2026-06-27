@@ -6,6 +6,9 @@ struct AgentOSMissionPayload: Codable, Equatable {
     let status: String
     let missionTitle: String
     let agentTimeline: [AgentOSTimelineEntry]
+    let agentReports: [WarRoomAgentReport]?
+    let warRoomRoster: [WarRoomRosterEntry]?
+    let graphNodes: [MissionGraphNodeViewModel]?
     let result: AgentOSMissionResult
     let actions: [AgentOSMissionAction]
     let text: String
@@ -16,6 +19,9 @@ struct AgentOSMissionPayload: Codable, Equatable {
         case status
         case missionTitle = "mission_title"
         case agentTimeline = "agent_timeline"
+        case agentReports = "agent_reports"
+        case warRoomRoster = "war_room_roster"
+        case graphNodes = "graph_nodes"
         case result
         case actions
         case text
@@ -51,6 +57,10 @@ struct AgentOSMissionResult: Codable, Equatable {
     let approvalQuestion: String?
     let runtime: String?
     let deploymentStatus: String?
+    let forgeEngine: String?
+    let engineDisplayName: String?
+    let engineStatus: String?
+    let forgeEvidencePaths: [String]?
 
     enum CodingKeys: String, CodingKey {
         case appName = "app_name"
@@ -64,6 +74,10 @@ struct AgentOSMissionResult: Codable, Equatable {
         case approvalQuestion = "approval_question"
         case runtime
         case deploymentStatus = "deployment_status"
+        case forgeEngine = "forge_engine"
+        case engineDisplayName = "engine_display_name"
+        case engineStatus = "engine_status"
+        case forgeEvidencePaths = "forge_evidence_paths"
     }
 }
 

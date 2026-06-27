@@ -89,10 +89,16 @@ class Settings(BaseSettings):
     nova_openhands_cmd: str = Field(default="", alias="NOVA_OPENHANDS_CMD")
     nova_claude_code_cmd: str = Field(default="claude", alias="NOVA_CLAUDE_CODE_CMD")
     nova_codex_cmd: str = Field(default="codex", alias="NOVA_CODEX_CMD")
+    nova_cursor_cmd: str = Field(default="", alias="NOVA_CURSOR_CMD")
     nova_forge_default_engine: str = Field(
         default="deterministic_template", alias="NOVA_FORGE_DEFAULT_ENGINE"
     )
     nova_reasoning_model: str = Field(default="", alias="NOVA_REASONING_MODEL")
+    nova_anthropic_model: str = Field(
+        default="claude-3-5-sonnet-latest", alias="NOVA_ANTHROPIC_MODEL"
+    )
+    nova_reasoning_provider: str = Field(default="auto", alias="NOVA_REASONING_PROVIDER")
+    nova_review_provider: str = Field(default="auto", alias="NOVA_REVIEW_PROVIDER")
     nova_n8n_base_url: str = Field(default="", alias="NOVA_N8N_BASE_URL")
     nova_openclaw_base_url: str = Field(default="", alias="NOVA_OPENCLAW_BASE_URL")
     nova_shortcuts_enabled: bool = Field(default=False, alias="NOVA_SHORTCUTS_ENABLED")

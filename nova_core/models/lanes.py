@@ -25,8 +25,13 @@ LANE_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "external_coding": {
         "description": "External Forge engines",
-        "candidates": ("openhands", "claude_code_cli", "codex_cli"),
+        "candidates": ("openhands", "claude_code_cli", "codex_cli", "cursor_cli"),
         "env": "NOVA_FORGE_DEFAULT_ENGINE",
+    },
+    "anthropic_reasoning": {
+        "description": "Anthropic Claude API for clarification and review",
+        "candidates": ("claude-3-5-sonnet-latest",),
+        "env": "NOVA_ANTHROPIC_MODEL",
     },
 }
 
@@ -70,7 +75,7 @@ def _is_installed(model: str, installed: list[str]) -> bool:
 
 def lane_statuses(settings: Settings | None = None) -> list[LaneStatus]:
     settings = settings or Settings()
-    installed = _installed_tags(settings)
+    installed_tags = _installed_tags(settings)
     mapping = {
         "local_fast": settings.nova_local_model or settings.nova_qwen_model or "(auto)",
         "local_coder": settings.nova_coder_model or "(not set)",
@@ -78,18 +83,25 @@ def lane_statuses(settings: Settings | None = None) -> list[LaneStatus]:
         "external_coding": (
             getattr(settings, "nova_forge_default_engine", "") or "deterministic_template"
         ),
+        "anthropic_reasoning": getattr(settings, "nova_anthropic_model", "") or "(not set)",
     }
+    from nova_core.providers.reasoning_lane import anthropic_configured
+
     rows: list[LaneStatus] = []
     for lane, meta in LANE_DEFINITIONS.items():
         configured = mapping.get(lane, "(not set)")
         recommended = str(meta["candidates"][0])
+        if lane == "anthropic_reasoning":
+            lane_ready = anthropic_configured(settings)
+        elif lane == "external_coding":
+            lane_ready = configured != "(not set)"
+        else:
+            lane_ready = _is_installed(configured, installed_tags)
         rows.append(
             LaneStatus(
                 lane=lane,
                 configured=configured,
-                installed=_is_installed(configured, installed)
-                if lane != "external_coding"
-                else configured != "(not set)",
+                installed=lane_ready,
                 recommended=recommended,
             )
         )
@@ -101,6 +113,15 @@ def recommend_lanes(settings: Settings | None = None) -> dict[str, str]:
     installed = _installed_tags(settings)
     rec: dict[str, str] = {}
     for lane, meta in LANE_DEFINITIONS.items():
+        if lane == "anthropic_reasoning":
+            from nova_core.providers.reasoning_lane import anthropic_configured
+
+            rec[lane] = (
+                settings.nova_anthropic_model or str(meta["candidates"][0])
+                if anthropic_configured(settings)
+                else "local fallback"
+            )
+            continue
         for candidate in meta["candidates"]:
             if lane == "external_coding":
                 rec[lane] = str(candidate)
