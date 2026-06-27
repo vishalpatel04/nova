@@ -40,6 +40,9 @@ class ForgeEngineResult:
     evidence_paths: list[str] = field(default_factory=list)
     files_touched: list[str] = field(default_factory=list)
     validation_passed: bool | None = None
+    validation_strategy: str = ""
+    validation_status: str = ""
+    reason: str = ""
     fallback_used: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +55,9 @@ class ForgeEngineResult:
             "evidence_paths": self.evidence_paths,
             "files_touched": self.files_touched[:32],
             "validation_passed": self.validation_passed,
+            "validation_strategy": self.validation_strategy,
+            "validation_status": self.validation_status,
+            "reason": self.reason,
             "fallback_used": self.fallback_used,
         }
 

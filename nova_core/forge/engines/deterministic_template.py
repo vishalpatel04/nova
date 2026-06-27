@@ -9,7 +9,8 @@ from nova_core.forge.engines.base import (
     ForgeEngineResult,
     ForgeTask,
 )
-from nova_core.forge.execution import run_safe_command, write_engine_prompt
+from nova_core.forge.execution import write_engine_prompt
+from nova_core.forge.project_validation import outcome_to_engine_result, run_project_validation
 from nova_core.orchestration.app_builder import build_app, project_path_for_request
 from nova_core.orchestration.app_request import parse_app_request
 
@@ -66,19 +67,8 @@ class DeterministicTemplateEngine:
         )
 
     def run_validation(self, workspace: Path, constraints: ForgeConstraints) -> ForgeEngineResult:
-        code, out, err = run_safe_command(
-            ["npm", "run", "build"],
-            cwd=workspace,
-            constraints=constraints,
-        )
-        return ForgeEngineResult(
-            engine_id=self.engine_id,
-            success=code == 0,
-            summary="npm run build",
-            stdout=out,
-            stderr=err,
-            validation_passed=code == 0,
-        )
+        outcome = run_project_validation(workspace, constraints)
+        return outcome_to_engine_result(outcome, engine_id=self.engine_id)
 
     def summarize_result(self, result: ForgeEngineResult) -> str:
         return result.summary

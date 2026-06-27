@@ -45,6 +45,8 @@ class ForgeExecutionResult:
     engine_display_name: str = ""
     engine_reason: str = ""
     summary: str = ""
+    validation_strategy: str = ""
+    validation_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +56,8 @@ class ForgeExecutionResult:
             "files_changed": self.files_changed[:32],
             "commands_run": self.commands_run,
             "validation_status": self.validation_status,
+            "validation_strategy": self.validation_strategy,
+            "validation_reason": self.validation_reason,
             "preview_url": self.preview_url,
             "preview_log_path": self.preview_log_path,
             "preview_reachable": self.preview_reachable,
@@ -99,6 +103,8 @@ class ForgeExecutionResult:
             engine_display_name=str(data.get("engine_display_name", "")),
             engine_reason=str(data.get("engine_reason", "")),
             summary=str(data.get("summary", "")),
+            validation_strategy=str(data.get("validation_strategy", "")),
+            validation_reason=str(data.get("validation_reason", "")),
         )
 
 
@@ -274,8 +280,16 @@ def execute_forge_build(
     validation = engine.run_validation(project_path, constraints)
 
     commands: list[dict[str, Any]] = []
-    if validation.stdout or validation.stderr:
-        commands.append({"command": "validation", "success": validation.success})
+    val_status = validation.validation_status or (
+        "pass" if validation.validation_passed else "fail"
+    )
+    if val_status in {"pass", "fail"}:
+        commands.append(
+            {
+                "command": validation.summary or "validation",
+                "success": validation.validation_passed is not False,
+            }
+        )
 
     build_passed = task_result.success and (validation.validation_passed is not False)
     return ForgeExecutionResult(
@@ -284,7 +298,9 @@ def execute_forge_build(
         workspace_path=str(project_path),
         files_changed=task_result.files_touched,
         commands_run=commands,
-        validation_status="pass" if validation.validation_passed else "fail",
+        validation_status=val_status,
+        validation_strategy=validation.validation_strategy,
+        validation_reason=validation.reason,
         evidence_paths=[str(prompt_path), *task_result.evidence_paths],
         stdout_log=task_result.stdout,
         stderr_log=task_result.stderr,
