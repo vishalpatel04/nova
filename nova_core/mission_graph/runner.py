@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from nova_core.mission_graph.config import MissionGraphRunConfig
 from nova_core.mission_graph.models import (
     GRAPH_VERSION,
     NODE_DISPLAY_NAMES,
@@ -31,7 +32,15 @@ class MissionGraphRunner:
         ]
         return MissionGraphState(mission_id=mission_id, user_request=user_request, nodes=nodes)
 
-    def run(self, state: MissionGraphState) -> MissionGraphEvidence:
+    def run(
+        self,
+        state: MissionGraphState,
+        *,
+        config: MissionGraphRunConfig | None = None,
+    ) -> MissionGraphEvidence:
+        if config is not None:
+            state.engine_id = config.selected_engine
+            state.context["_run_config"] = config
         for node_id in self.NODE_ORDER:
             record = state.node(node_id)
             if record is None:

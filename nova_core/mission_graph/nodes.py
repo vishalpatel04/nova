@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from nova_core.forge.mission_executor import execute_forge_build
 from nova_core.forge.selector import suggest_forge_engine
+from nova_core.mission_graph.config import MissionGraphRunConfig
 from nova_core.mission_graph.models import MissionGraphState, NodeRecord, NodeStatus, utc_now_iso
 from nova_core.orchestration.app_request import parse_app_request
 
@@ -44,6 +46,14 @@ def _select_commander(state: MissionGraphState) -> dict[str, Any]:
 
 
 def _select_engine(state: MissionGraphState) -> dict[str, Any]:
+    run_config = state.context.get("_run_config")
+    if isinstance(run_config, MissionGraphRunConfig) and run_config.selected_engine:
+        engine_id = run_config.selected_engine
+        return {
+            "engine_id": engine_id,
+            "output_summary": f"selected_engine={engine_id}",
+            "context": {**state.context, "engine_selected_by_user": True},
+        }
     suggestion = suggest_forge_engine(state.user_request)
     return {
         "engine_id": suggestion.engine_id,
@@ -64,13 +74,39 @@ def _plan(state: MissionGraphState) -> dict[str, Any]:
 
 
 def _execute(state: MissionGraphState) -> dict[str, Any]:
+    run_config = state.context.get("_run_config")
+    if not isinstance(run_config, MissionGraphRunConfig):
+        return {
+            "output_summary": f"execute with {state.engine_id}",
+            "context": {**state.context, "executed": True},
+        }
+    result = execute_forge_build(
+        user_request=state.user_request,
+        engine_id=state.engine_id,
+        settings=run_config.settings,
+        run_npm=run_config.run_npm,
+        start_preview=run_config.start_preview,
+        clean_workspace=run_config.clean_workspace,
+        allow_fallback=run_config.allow_fallback,
+    )
+    forge_dict = result.to_dict()
     return {
-        "output_summary": f"execute with {state.engine_id}",
-        "context": {**state.context, "executed": True},
+        "output_summary": result.summary[:200],
+        "context": {**state.context, "forge_execution": forge_dict, "executed": True},
+        "final_report": {"forge_execution": forge_dict},
+        "evidence": result.evidence_paths,
+        "error": None if result.status != "failed" else result.summary[:200],
     }
 
 
 def _validate(state: MissionGraphState) -> dict[str, Any]:
+    forge_data = state.context.get("forge_execution")
+    if isinstance(forge_data, dict):
+        validation = str(forge_data.get("validation_status", "unknown"))
+        return {
+            "output_summary": f"validation={validation}",
+            "context": {**state.context, "validated": True, "validation_status": validation},
+        }
     ctx = {**state.context, "validated": True}
     return {"output_summary": "validation scheduled", "context": ctx}
 

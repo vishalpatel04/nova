@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from nova_core.mission_graph.config import MissionGraphRunConfig
 from nova_core.mission_graph.models import MissionGraphEvidence
 from nova_core.mission_graph.runner import MissionGraphRunner
 
@@ -20,17 +21,29 @@ class LangGraphAdapter:
     def __init__(self) -> None:
         self._internal = MissionGraphRunner()
 
-    def run(self, mission_id: str, user_request: str) -> MissionGraphEvidence:
+    def run(
+        self,
+        mission_id: str,
+        user_request: str,
+        *,
+        config: MissionGraphRunConfig | None = None,
+    ) -> MissionGraphEvidence:
         if langgraph_available():
-            return self._run_langgraph(mission_id, user_request)
+            return self._run_langgraph(mission_id, user_request, config=config)
         state = self._internal.create_state(mission_id, user_request)
-        return self._internal.run(state)
+        return self._internal.run(state, config=config)
 
-    def _run_langgraph(self, mission_id: str, user_request: str) -> MissionGraphEvidence:
+    def _run_langgraph(
+        self,
+        mission_id: str,
+        user_request: str,
+        *,
+        config: MissionGraphRunConfig | None = None,
+    ) -> MissionGraphEvidence:
         # LangGraph integration point: map NODE_HANDLERS to a StateGraph when needed.
         # For now, internal runner preserves identical evidence shape.
         state = self._internal.create_state(mission_id, user_request)
-        evidence = self._internal.run(state)
+        evidence = self._internal.run(state, config=config)
         evidence.final_report["langgraph_mode"] = "adapter_fallback_internal"
         return evidence
 

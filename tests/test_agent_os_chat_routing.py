@@ -85,7 +85,7 @@ async def test_chat_named_calculator_routes_to_agent_os(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "arth", "arth-calculator-app"
         )
@@ -117,7 +117,7 @@ async def test_chat_cli_calculator_routes_to_agent_os_not_qwen(
     from nova_core.orchestration.app_builder import BuildResult, CommandResult
 
     project = workspace_tmp / "arth-cli-calculator"
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = BuildResult(
             project_path=str(project),
             files_written=[str(project / "calculator.py")],

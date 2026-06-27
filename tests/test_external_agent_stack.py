@@ -11,6 +11,7 @@ from apps.api.services.forge_engine_service import ForgeEngineService
 from nova_core.forge.engines.base import ForgeConstraints, ForgeTask
 from nova_core.forge.engines.registry import get_engine, list_engines
 from nova_core.forge.execution import redact_prompt_text, write_engine_prompt
+from nova_core.forge.mission_executor import ForgeExecutionResult
 from nova_core.forge.selector import suggest_forge_engine
 from nova_core.gateway.router import GatewayRouter
 from nova_core.mission_graph.runner import MissionGraphRunner
@@ -39,9 +40,22 @@ def test_audit_doc_exists() -> None:
 
 
 def test_mission_graph_records_nodes(tmp_path: Path) -> None:
-    runner = MissionGraphRunner(store=MissionGraphStore(base_dir=tmp_path / "graphs"))
-    state = runner.create_state("mid-1", "build a landing page for SusCo")
-    evidence = runner.run(state)
+    mock_result = ForgeExecutionResult(
+        engine_id="deterministic_template",
+        status="success",
+        workspace_path=str(tmp_path / "demo"),
+        build_passed=True,
+        app_name="SusCo",
+        app_type="landing_page",
+        engine_display_name="Deterministic Template",
+    )
+    with patch(
+        "nova_core.mission_graph.nodes.execute_forge_build",
+        return_value=mock_result,
+    ):
+        runner = MissionGraphRunner(store=MissionGraphStore(base_dir=tmp_path / "graphs"))
+        state = runner.create_state("mid-1", "build a landing page for SusCo")
+        evidence = runner.run(state)
     assert len(evidence.nodes) == 11
     assert evidence.nodes[0]["node_id"] == "classify_request"
     assert evidence.engine_selected

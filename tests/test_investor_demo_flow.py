@@ -85,7 +85,7 @@ async def test_vague_landing_page_returns_clarification_not_build(
 ) -> None:
     svc = ChatService(db_session, test_settings)
     with (
-        patch("nova_core.agent_os.mission.build_app") as mock_build,
+        patch("nova_core.forge.mission_executor.build_app") as mock_build,
         patch(
             "nova_core.orchestration.qwen_clarifier.generate_clarification_plan",
             new=AsyncMock(
@@ -111,7 +111,7 @@ async def test_assumption_continuation_builds_mission(
 ) -> None:
     svc = ChatService(db_session, test_settings)
     principal = _principal(test_settings)
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "landing_page", "SusCo Landing Page", "landing-page-susco"
         )
@@ -137,7 +137,7 @@ async def test_specific_calculator_builds_directly(
     db_session: AsyncSession, test_settings: Settings, workspace_tmp: Path
 ) -> None:
     svc = ChatService(db_session, test_settings)
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "arth", "arth-calculator-app"
         )

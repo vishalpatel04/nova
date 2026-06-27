@@ -109,6 +109,15 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
                 "text": evidence,
             }
         )
+    forge_evidence = report.get("forge_evidence_paths") or []
+    for forge_path in forge_evidence[:3]:
+        actions.append(
+            {
+                "label": "Forge Evidence",
+                "action": "copy_text",
+                "text": forge_path,
+            }
+        )
 
     return {
         "type": "agent_os_mission",
@@ -117,6 +126,7 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
         "mission_title": mission.user_request,
         "agent_timeline": agent_timeline,
         "graph_nodes": graph_nodes,
+        "mission_graph_nodes": graph_nodes,
         "result": {
             "app_name": report.get("app_name", mission.artifacts.get("app_name")),
             "app_type": report.get("app_type", mission.artifacts.get("app_type")),
@@ -137,9 +147,17 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
             "validation_commands": report.get("validation_commands", []),
             "forge_engine": report.get("forge_engine")
             or (mission.artifacts.get("mission_graph") or {}).get("engine_selected"),
+            "engine_display_name": report.get("engine_display_name", ""),
+            "engine_status": report.get("engine_status", ""),
+            "engine_reason": report.get("engine_reason", ""),
+            "setup_hint": report.get("setup_hint", ""),
+            "external_engine_available": report.get("external_engine_available", False),
+            "fallback_used": report.get("fallback_used", False),
+            "forge_evidence_paths": report.get("forge_evidence_paths", []),
             "mission_graph_version": (mission.artifacts.get("mission_graph") or {}).get(
                 "graph_version"
             ),
+            "mission_graph_nodes": graph_nodes,
         },
         "actions": actions,
         "text": _short_text(mission),

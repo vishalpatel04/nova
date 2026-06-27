@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from nova_core.forge.selector import suggest_forge_engine
 from nova_core.orchestration.app_request import AppRequest
 from nova_core.orchestration.app_spec import build_app_spec
 from nova_core.orchestration.app_spec_clarification import (
@@ -186,6 +187,25 @@ async def generate_clarification_plan(
         return deterministic_plan(request)
 
 
+def _forge_engine_clarification_block(request: AppRequest) -> list[str]:
+    suggestion = suggest_forge_engine(request.raw_user_request)
+    if suggestion.complexity != "complex" and not suggestion.suggest_external:
+        return []
+    lines = [
+        "",
+        f"Complexity: {suggestion.complexity}",
+        "This may exceed template scaffolding (auth/database/backend).",
+        suggestion.reason,
+        "Forge can delegate to OpenHands, Claude Code, or Codex when configured.",
+    ]
+    if suggestion.suggest_external:
+        lines.append(
+            "Reply with your preferred engine, or say use deterministic fallback "
+            "for template scaffold."
+        )
+    return lines
+
+
 def format_clarification_message(request: AppRequest, plan: ClarificationPlan) -> str:
     if plan.proceed_with_confirmation and plan.confirmation_message:
         return (
@@ -201,6 +221,7 @@ def format_clarification_message(request: AppRequest, plan: ClarificationPlan) -
         lines.extend(["", "Quick questions:", ""])
         for index, question in enumerate(plan.questions, start=1):
             lines.append(f"{index}. {question}")
+    lines.extend(_forge_engine_clarification_block(request))
     lines.extend(
         [
             "",

@@ -256,7 +256,7 @@ def test_calculator_mission_timeline(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "NOVA Calculator", "calculator-app"
         )
@@ -289,7 +289,7 @@ def test_preview_url_only_when_reachable(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         from nova_core.orchestration.app_builder import BuildResult, CommandResult
         from nova_core.orchestration.preview import PreviewSession
 
@@ -338,7 +338,7 @@ def test_mission_final_response_asks_deploy(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "NOVA Todo", "todo-app")
         mission = runner.run_mission("build a todo app", run_npm=False)
     text = runner.format_cli_output(mission)
@@ -351,7 +351,7 @@ def test_yes_maps_to_deploy_only_when_awaiting(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "NOVA Todo", "todo-app")
         runner.run_mission("build a todo app", run_npm=False)
     assert resolve_deployment_chat_intent("yes") == ("agent_os_deploy_yes", {})
@@ -368,7 +368,7 @@ def test_no_marks_deploy_skipped(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "NOVA Todo", "todo-app")
         mission = runner.run_mission("build a todo app", run_npm=False)
     skipped = runner.skip_deployment(mission.mission_id)
@@ -382,7 +382,7 @@ def test_deploy_requires_sentry_approval(workspace_tmp: Path) -> None:
     runs = workspace_tmp / ".nova-runs"
     runs.mkdir(parents=True, exist_ok=True)
     runner = AgentMissionRunner(MissionStore(runs))
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "NOVA Calculator", "calculator-app"
         )
@@ -503,7 +503,7 @@ async def test_chat_calculator_mission_not_general(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "NOVA Calculator", "calculator-app"
         )
@@ -529,7 +529,7 @@ async def test_chat_todo_mission_not_general(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(workspace_tmp, "todo", "demo", "demo-todo-app")
         first = await svc.handle_message(
             message="build a todo app called demo", principal=principal

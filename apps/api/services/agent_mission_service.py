@@ -24,7 +24,7 @@ class AgentMissionService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self.session = session
         self.settings = settings
-        self.runner = AgentMissionRunner()
+        self.runner = AgentMissionRunner(settings=settings)
         self.memory = MemoryKernelService(session, settings)
 
     async def ensure_full_local(self, user_id: str) -> None:
@@ -99,6 +99,8 @@ class AgentMissionService:
         clean_workspace: bool = False,
         start_preview: bool = True,
         assumptions: list[str] | None = None,
+        selected_engine: str | None = None,
+        allow_fallback: bool = False,
     ) -> AgentMission:
         return self.runner.run_mission(
             user_request,
@@ -106,6 +108,8 @@ class AgentMissionService:
             clean_workspace=clean_workspace,
             start_preview=start_preview,
             assumptions=assumptions,
+            selected_engine=selected_engine,
+            allow_fallback=allow_fallback,
         )
 
     def get_mission(self, mission_id: str) -> AgentMission | None:
@@ -182,7 +186,11 @@ def parse_archive_search_query(text: str) -> str | None:
 
 
 def is_agent_os_mission_request(text: str) -> bool:
-    return is_app_build_intent(text)
+    if is_app_build_intent(text):
+        return True
+    from nova_core.forge.selector import _EXPLICIT_ENGINE_PATTERNS
+
+    return any(pattern.search(text) for pattern, _ in _EXPLICIT_ENGINE_PATTERNS)
 
 
 def normalize_build_app_request(short_name: str) -> str:

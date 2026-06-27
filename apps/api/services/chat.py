@@ -42,6 +42,7 @@ from apps.api.services.runtime import (
 )
 from nova_core.agent_os.chat_payload import build_agent_os_chat_payload
 from nova_core.agent_os.models import AgentMission
+from nova_core.agent_os.workspace import workspace_root
 from nova_core.auth.principal import Principal
 from nova_core.background.schedules import daily_cron_at
 from nova_core.capabilities.model import (
@@ -56,7 +57,12 @@ from nova_core.capabilities.resolver import (
     resolve_chat_message,
 )
 from nova_core.devices.availability import get_worker_availability
-from nova_core.forge.selector import format_external_engine_message, suggest_forge_engine
+from nova_core.forge.engines.registry import get_engine
+from nova_core.forge.selection_flow import (
+    analyze_forge_selection,
+    build_unavailable_engine_message,
+    parse_engine_selection_reply,
+)
 from nova_core.memory.access_policy import AccessProfile
 from nova_core.memory.project_history import (
     format_last_failure,
@@ -409,6 +415,16 @@ class ChatService:
             await self._persist_assistant(sessions, chat_session, orbit_recipient_response)
             return orbit_recipient_response
 
+        forge_response = await self._try_resolve_pending_forge_engine(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if forge_response is not None:
+            await self._persist_assistant(sessions, chat_session, forge_response)
+            return forge_response
+
         app_spec_response = await self._try_resolve_pending_app_spec(
             principal,
             text,
@@ -418,6 +434,16 @@ class ChatService:
         if app_spec_response is not None:
             await self._persist_assistant(sessions, chat_session, app_spec_response)
             return app_spec_response
+
+        forge_start = await self._try_start_forge_engine_selection(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if forge_start is not None:
+            await self._persist_assistant(sessions, chat_session, forge_start)
+            return forge_start
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
@@ -671,6 +697,20 @@ class ChatService:
                 yield event
             return
 
+        forge_response = await self._try_resolve_pending_forge_engine(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if forge_response is not None:
+            async for event in self._emit_full_response(sessions, chat_session, forge_response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
         app_spec_response = await self._try_resolve_pending_app_spec(
             principal,
             text,
@@ -679,6 +719,20 @@ class ChatService:
         )
         if app_spec_response is not None:
             async for event in self._emit_full_response(sessions, chat_session, app_spec_response):
+                if cancel and cancel.cancelled:
+                    yield {"event": "cancelled", "data": {}}
+                    return
+                yield event
+            return
+
+        forge_start = await self._try_start_forge_engine_selection(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if forge_start is not None:
+            async for event in self._emit_full_response(sessions, chat_session, forge_start):
                 if cancel and cancel.cancelled:
                     yield {"event": "cancelled", "data": {}}
                     return
@@ -1826,6 +1880,64 @@ class ChatService:
         svc = AgentMissionService(self.session, self.settings)
         return await svc.archive_search(principal.user_id, query)
 
+    async def _try_start_forge_engine_selection(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        if not is_agent_os_mission_request(text):
+            return None
+        selection = analyze_forge_selection(text, self.settings)
+        if selection is None:
+            return None
+        if selection.needs_pending:
+            pending_svc = PendingToolIntentService(self.session)
+            from nova_core.orchestration.app_spec import build_app_spec
+
+            app_spec: dict[str, str] = {}
+            if selection.parsed_app_request is not None:
+                spec = build_app_spec(selection.parsed_app_request)
+                app_spec = {"title": spec.title, "description": spec.description}
+            payload = selection.to_payload(
+                raw_request=text.strip(),
+                workspace_path=str(workspace_root()),
+                app_spec=app_spec,
+            )
+            await pending_svc.create_forge_engine_selection(
+                principal,
+                session_id=session_id,
+                payload=payload,
+            )
+            return self._response(
+                selection.message,
+                intent="forge_engine_selection",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=PendingToolIntentType.FORGE_ENGINE_SELECTION.value,
+            )
+        if selection.direct_engine_id and selection.direct_engine_available:
+            svc = AgentMissionService(self.session, self.settings)
+            mission = svc.run_mission(
+                text.strip(),
+                run_npm=True,
+                clean_workspace=True,
+                start_preview=True,
+                selected_engine=selection.direct_engine_id,
+            )
+            self._store_agent_mission_payload(mission)
+            extra = self._collect_handler_extra("agent_os_mission")
+            return self._response(
+                svc.mission_timeline_text(mission.mission_id),
+                intent="agent_os_mission",
+                routing=routing,
+                session_id=session_id,
+                **extra,
+            )
+        return None
+
     async def _agent_os_mission(
         self, principal: Principal, args: dict[str, str], **_kw: Any
     ) -> str:
@@ -1839,11 +1951,7 @@ class ChatService:
             app_request = parse_app_request(f"build a simple web app for {request}")
         if app_request is None:
             return "Could not parse app build request."
-        forge_msg = format_external_engine_message(request, self.settings)
-        if forge_msg and "fallback scaffold" not in request.lower():
-            explicit = suggest_forge_engine(request)
-            if explicit.suggest_external:
-                return forge_msg
+
         session_id = _kw.get("session_id")
         if app_request.requires_clarification:
             return app_request.clarification_message
@@ -1864,9 +1972,92 @@ class ChatService:
             self._pending_tool_intent_type = "agent_os_app_spec"
             return message
         svc = AgentMissionService(self.session, self.settings)
-        mission = svc.run_mission(request, run_npm=True, clean_workspace=True, start_preview=True)
+        mission = svc.run_mission(
+            request,
+            run_npm=True,
+            clean_workspace=True,
+            start_preview=True,
+            selected_engine="deterministic_template",
+        )
         self._store_agent_mission_payload(mission)
         return svc.mission_timeline_text(mission.mission_id)
+
+    async def _try_resolve_pending_forge_engine(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        pending_svc = PendingToolIntentService(self.session)
+        record = await pending_svc.get_active(principal, session_id)
+        if record is None:
+            return None
+        if record.intent_type != PendingToolIntentType.FORGE_ENGINE_SELECTION.value:
+            return None
+
+        payload = pending_svc.payload_forge_engine(record)
+        raw_request = payload["raw_request"]
+        parsed_engine = parse_engine_selection_reply(text)
+        if parsed_engine == "__cancel__":
+            await pending_svc.consume(record, status=PendingToolIntentStatus.CANCELLED)
+            return self._response(
+                "Forge engine selection cancelled.",
+                intent="pending_cancelled",
+                routing=routing,
+                session_id=session_id,
+            )
+        if parsed_engine is None:
+            return self._response(
+                (
+                    "Please choose a Forge engine:\n"
+                    "use OpenHands | use Claude Code | use Codex |\n"
+                    "use deterministic fallback | cancel"
+                ),
+                intent="forge_engine_selection",
+                routing=routing,
+                session_id=session_id,
+                pending_tool_intent=record.intent_type,
+            )
+
+        if parsed_engine != "deterministic_template":
+            engine = get_engine(parsed_engine, self.settings)
+            if engine is not None and not engine.available():
+                return self._response(
+                    build_unavailable_engine_message(parsed_engine, self.settings),
+                    intent="forge_engine_selection",
+                    routing=routing,
+                    session_id=session_id,
+                    pending_tool_intent=record.intent_type,
+                )
+
+        await pending_svc.consume(record)
+        allow_fallback = parsed_engine == "deterministic_template"
+        intro = (
+            "Running deterministic template fallback…"
+            if allow_fallback
+            else f"Running Forge engine: {parsed_engine}…"
+        )
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.run_mission(
+            raw_request,
+            run_npm=True,
+            clean_workspace=True,
+            start_preview=True,
+            selected_engine=parsed_engine,
+            allow_fallback=allow_fallback,
+        )
+        self._store_agent_mission_payload(mission)
+        body = f"{intro}\n\n{svc.mission_timeline_text(mission.mission_id)}"
+        extra = self._collect_handler_extra("agent_os_mission")
+        return self._response(
+            body,
+            intent="agent_os_mission",
+            routing=routing,
+            session_id=session_id,
+            **extra,
+        )
 
     async def _try_resolve_pending_app_spec(
         self,
@@ -1956,6 +2147,7 @@ class ChatService:
             clean_workspace=True,
             start_preview=True,
             assumptions=assumptions,
+            selected_engine="deterministic_template",
         )
         self._store_agent_mission_payload(mission)
         body = f"{intro}\n\n{svc.mission_timeline_text(mission.mission_id)}"

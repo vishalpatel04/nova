@@ -132,6 +132,30 @@ class PendingToolIntentService:
         await self.session.flush()
         return record
 
+    async def create_forge_engine_selection(
+        self,
+        principal: Principal,
+        *,
+        session_id: str,
+        payload: dict[str, Any],
+    ) -> PendingToolIntent:
+        if not principal.device_id:
+            raise ValidationError("Device id required for pending tool intent")
+        await self.cancel_active_for_session(principal, session_id)
+        expires_at = _utc_now() + timedelta(minutes=PENDING_INTENT_TTL_MINUTES)
+        record = PendingToolIntent(
+            session_id=session_id,
+            user_id=principal.user_id,
+            device_id=principal.device_id,
+            intent_type=PendingToolIntentType.FORGE_ENGINE_SELECTION.value,
+            payload_json=payload,
+            status=PendingToolIntentStatus.PENDING.value,
+            expires_at=expires_at,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        return record
+
     async def create_orbit_email_recipient(
         self,
         principal: Principal,
@@ -182,6 +206,23 @@ class PendingToolIntentService:
             "runtime": str(payload.get("runtime", "web")),
             "mode": str(payload.get("mode", "clarification")),
             "safe_assumptions": list(payload.get("safe_assumptions") or []),
+        }
+
+    def payload_forge_engine(self, record: PendingToolIntent) -> dict[str, Any]:
+        payload = record.payload_json or {}
+        return {
+            "raw_request": str(payload.get("raw_request", "")),
+            "parsed_app_request": dict(payload.get("parsed_app_request") or {}),
+            "recommended_engine": str(payload.get("recommended_engine", "deterministic_template")),
+            "available_engines": list(payload.get("available_engines") or []),
+            "unavailable_engines": list(payload.get("unavailable_engines") or []),
+            "workspace_path": str(payload.get("workspace_path", "")),
+            "complexity_reason": str(payload.get("complexity_reason", "")),
+            "complexity": str(payload.get("complexity", "simple")),
+            "app_spec": dict(payload.get("app_spec") or {}),
+            "preselected_engine": payload.get("preselected_engine"),
+            "created_at": str(payload.get("created_at", "")),
+            "expires_at": str(payload.get("expires_at", "")),
         }
 
     async def _fetch_pending(

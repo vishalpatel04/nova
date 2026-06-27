@@ -11,9 +11,9 @@ TRAILING = r"(?:\s*$|[?.!,])"
 
 # Broad intent detector — routes to Agent OS before Qwen even when parse needs clarification.
 APP_BUILD_INTENT_RE = re.compile(
-    rf"(?i){APP_BUILD_VERBS}\s+(?:me\s+)?"
-    r"(?:a\s+)?(?:simple\s+)?(?:command-?line\s+)?"
-    r"(?:calculator|todo|habit[\s-]?tracker|expense[\s-]?tracker|landing\s+page|web\s+app|an?\s+app\b)"
+    rf"(?i){APP_BUILD_VERBS}\s+(?:me\s+)?(?:a\s+)?(?:[\w-]+\s+)*?"
+    r"(?:calculator|todo|habit[\s-]?tracker|expense[\s-]?tracker|landing\s+page|crm|"
+    r"web\s+app|an?\s+app\b)"
 )
 
 # Ordered from most specific to least specific.
@@ -76,9 +76,19 @@ PARSE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     (
         "expense_tracker",
         "web",
+        re.compile(rf"(?i){APP_BUILD_VERBS}\s+(?:an?\s+)?(?:proper\s+)?expense[\s-]?tracker\b.*"),
+    ),
+    (
+        "expense_tracker",
+        "web",
         re.compile(
             rf"(?i){APP_BUILD_VERBS}\s+(?:an?\s+)?expense[\s-]?tracker(?:\s+app)?{TRAILING}"
         ),
+    ),
+    (
+        "generic",
+        "web",
+        re.compile(rf"(?i){APP_BUILD_VERBS}\s+(?:an?\s+)?crm\b.*"),
     ),
     (
         "landing_page",

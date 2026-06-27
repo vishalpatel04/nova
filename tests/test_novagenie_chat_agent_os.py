@@ -59,7 +59,7 @@ async def test_chat_returns_structured_agent_os_payload(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "arth", "arth-calculator-app"
         )
@@ -96,7 +96,7 @@ async def test_chat_stream_routes_agent_os_not_general(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "arth", "arth-calculator-app"
         )
@@ -125,7 +125,7 @@ async def test_chat_no_skips_deployment(
         device_id="test-device",
         token_role="client",
     )
-    with patch("nova_core.agent_os.mission.build_app") as mock_build:
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
         mock_build.return_value = _mock_build_result(
             workspace_tmp, "calculator", "arth", "arth-calculator-app"
         )

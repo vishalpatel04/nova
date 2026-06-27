@@ -16,15 +16,17 @@ from nova_core.agent_os.timeline import (
     format_timeline_cli,
 )
 from nova_core.agent_os.workspace import redact_secrets, runs_dir
+from nova_core.forge.mission_executor import ForgeExecutionResult
+from nova_core.mission_graph.config import MissionGraphRunConfig
 from nova_core.mission_graph.langgraph_adapter import LangGraphAdapter
+from nova_core.mission_graph.models import MissionGraphEvidence
 from nova_core.orchestration.app_builder import (
-    build_app,
-    clean_project_workspace,
     project_path_for_request,
     stop_app_preview,
 )
 from nova_core.orchestration.app_request import parse_app_request
 from nova_core.orchestration.app_spec import build_app_spec
+from nova_core.schemas.settings import Settings
 
 
 class MissionStore:
@@ -36,6 +38,7 @@ class MissionStore:
 
     def save(self, mission: AgentMission) -> None:
         path = self._path(mission.mission_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(mission.to_dict(), indent=2), encoding="utf-8")
         mission.evidence_log_path = str(path)
 
@@ -60,8 +63,13 @@ class MissionStore:
 
 
 class AgentMissionRunner:
-    def __init__(self, store: MissionStore | None = None) -> None:
+    def __init__(
+        self,
+        store: MissionStore | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self.store = store or MissionStore()
+        self.settings = settings or Settings()
 
     def create_mission(self, user_request: str) -> AgentMission:
         classification = classify_request(user_request)
@@ -98,11 +106,27 @@ class AgentMissionRunner:
         clean_workspace: bool = False,
         start_preview: bool = True,
         assumptions: list[str] | None = None,
+        selected_engine: str | None = None,
+        allow_fallback: bool = False,
     ) -> AgentMission:
         mission = self.create_mission(user_request)
         if assumptions:
             mission.artifacts["assumptions"] = assumptions
-        graph_evidence = LangGraphAdapter().run(mission.mission_id, user_request)
+        engine_id = selected_engine or "deterministic_template"
+        mission.artifacts["selected_engine"] = engine_id
+        graph_config = MissionGraphRunConfig(
+            selected_engine=engine_id,
+            settings=self.settings,
+            run_npm=run_npm,
+            start_preview=start_preview,
+            clean_workspace=clean_workspace,
+            allow_fallback=allow_fallback,
+        )
+        graph_evidence = LangGraphAdapter().run(
+            mission.mission_id,
+            user_request,
+            config=graph_config,
+        )
         mission.artifacts["mission_graph"] = graph_evidence.to_dict()
         mission.status = MissionStatus.RUNNING
         append_timeline(
@@ -121,9 +145,9 @@ class AgentMissionRunner:
         if is_app_build_mission(user_request):
             return self._run_app_builder_mission(
                 mission,
-                run_npm=run_npm,
-                clean_workspace=clean_workspace,
-                start_preview=start_preview,
+                graph_evidence=graph_evidence,
+                selected_engine=engine_id,
+                allow_fallback=allow_fallback,
             )
 
         append_timeline(
@@ -143,9 +167,9 @@ class AgentMissionRunner:
         self,
         mission: AgentMission,
         *,
-        run_npm: bool,
-        clean_workspace: bool,
-        start_preview: bool,
+        graph_evidence: MissionGraphEvidence,
+        selected_engine: str,
+        allow_fallback: bool,
     ) -> AgentMission:
         app_request = parse_app_request(mission.user_request)
         if app_request is None:
@@ -174,6 +198,42 @@ class AgentMissionRunner:
             self.store.save(mission)
             return mission
 
+        forge_data = graph_evidence.final_report.get("forge_execution", {})
+        forge = (
+            ForgeExecutionResult.from_dict(forge_data)
+            if isinstance(forge_data, dict) and forge_data
+            else None
+        )
+        if forge is None:
+            mission.status = MissionStatus.FAILED
+            mission.final_report = {
+                "summary": "Forge execution did not produce a result.",
+                "evidence_log": str(self.store._path(mission.mission_id)),
+            }
+            self.store.save(mission)
+            return mission
+
+        if forge.status == "unavailable":
+            append_timeline(
+                mission,
+                agent_id="forge",
+                display_name="Forge",
+                message=f"{forge.engine_display_name} unavailable",
+                evidence={"setup_hint": forge.setup_hint},
+            )
+            mission.status = MissionStatus.COMPLETED
+            mission.final_report = {
+                "summary": forge.setup_hint,
+                "forge_engine": forge.engine_id,
+                "engine_display_name": forge.engine_display_name,
+                "engine_status": forge.status,
+                "setup_hint": forge.setup_hint,
+                "external_engine_available": False,
+                "evidence_log": str(self.store._path(mission.mission_id)),
+            }
+            self.store.save(mission)
+            return mission
+
         spec = build_app_spec(app_request)
         mission.artifacts["app_spec_summary"] = {
             "title": spec.title,
@@ -184,11 +244,12 @@ class AgentMissionRunner:
         }
         project_path = project_path_for_request(app_request)
 
+        engine_label = forge.engine_display_name or forge.engine_id
         append_timeline(
             mission,
             agent_id="forge",
             display_name="Forge",
-            message="Engineering squad activated",
+            message=f"Engineering squad activated — engine: {engine_label}",
         )
         append_timeline(
             mission,
@@ -204,75 +265,55 @@ class AgentMissionRunner:
             message=f"Selected stack: {spec.stack}",
         )
 
-        if clean_workspace:
-            clean_project_workspace(project_path)
-
-        build = build_app(
-            app_request,
-            run_npm=run_npm,
-            start_preview=start_preview,
-            project_path=project_path,
-        )
-        mission.workspace_path = build.project_path
-        mission.files_touched = build.files_written
+        mission.workspace_path = forge.workspace_path or str(project_path)
+        mission.files_touched = forge.files_changed
+        mission.commands_run.extend(forge.commands_run)
         mission.artifacts.update(
             {
-                "app_type": build.app_type,
-                "app_name": build.app_name,
-                "template_id": build.template_id,
-                "runtime": build.runtime,
+                "app_type": forge.app_type or app_request.app_type,
+                "app_name": forge.app_name or app_request.app_name,
+                "template_id": forge.template_id or forge.engine_id,
+                "runtime": forge.runtime or app_request.runtime,
+                "forge_execution": forge.to_dict(),
             }
         )
 
-        engineer_label = "Backend Engineer" if build.runtime == "cli" else "Frontend Engineer"
+        engineer_label = "Backend Engineer" if forge.runtime == "cli" else "Frontend Engineer"
         append_timeline(
             mission,
             agent_id="frontend_engineer",
             display_name=engineer_label,
-            message="Generated app files",
-            evidence={"file_count": len(build.files_written), "template": build.template_id},
+            message=f"Generated app files via {forge.engine_display_name or forge.engine_id}",
+            evidence={
+                "file_count": len(forge.files_changed),
+                "engine": forge.engine_id,
+                "fallback_used": forge.fallback_used,
+            },
         )
 
-        if build.install:
-            mission.commands_run.append(
-                {
-                    "command": build.install.command,
-                    "exit_code": build.install.exit_code,
-                    "success": build.install.success,
-                }
-            )
-            install_label = "python syntax check" if build.runtime == "cli" else "npm install"
-            append_timeline(
-                mission,
-                agent_id="qa_engineer",
-                display_name="QA Engineer",
-                message=f"{install_label}: {'PASS' if build.install.success else 'FAIL'}",
-            )
+        if forge.commands_run:
+            for entry in forge.commands_run:
+                label = entry.get("command", "command")
+                success = entry.get("success", False)
+                append_timeline(
+                    mission,
+                    agent_id="qa_engineer",
+                    display_name="QA Engineer",
+                    message=f"{label}: {'PASS' if success else 'FAIL'}",
+                )
+                mission.validation_results.append(
+                    {"step": label, "passed": bool(success)},
+                )
 
-        if build.build:
-            mission.commands_run.append(
-                {
-                    "command": build.build.command,
-                    "exit_code": build.build.exit_code,
-                    "success": build.build.success,
-                }
-            )
-            validation_step = "python smoke test" if build.runtime == "cli" else "npm run build"
-            mission.validation_results.append(
-                {
-                    "step": validation_step,
-                    "passed": build.build.success,
-                }
-            )
-            build_label = "smoke test" if build.runtime == "cli" else "npm run build"
-            append_timeline(
-                mission,
-                agent_id="qa_engineer",
-                display_name="QA Engineer",
-                message=f"{build_label}: {'PASS' if build.build.success else 'FAIL'}",
-            )
+        validation_label = forge.validation_status.upper()
+        append_timeline(
+            mission,
+            agent_id="qa_engineer",
+            display_name="QA Engineer",
+            message=f"Validation: {validation_label}",
+        )
 
-        fixes_needed = not build.build_passed
+        fixes_needed = not forge.build_passed
         append_timeline(
             mission,
             agent_id="fixer",
@@ -283,50 +324,39 @@ class AgentMissionRunner:
             mission,
             agent_id="code_reviewer",
             display_name="Code Reviewer",
-            message=f"Static review: {'PASS' if build.build_passed else 'FAIL'}",
+            message=f"Static review: {'PASS' if forge.build_passed else 'FAIL'}",
         )
 
         preview_status = "n/a"
-        preview_log_path: str | None = None
-        preview_pid: int | None = None
-        preview_port: int | None = None
-
-        if build.runtime == "cli" and build.build_passed and build.run_command:
+        if forge.runtime == "cli" and forge.build_passed and forge.run_command:
             append_timeline(
                 mission,
                 agent_id="devops_deploy",
                 display_name="Deploy Engineer",
-                message=f"CLI app ready — run: {build.run_command}",
+                message=f"CLI app ready — run: {forge.run_command}",
             )
-
-        if build.preview:
-            preview_pid = build.preview.pid
-            preview_port = build.preview.port
-            preview_log_path = build.preview.log_path
+        if forge.preview_url:
+            mission.preview_url = forge.preview_url
+            preview_status = forge.preview_url
+            append_timeline(
+                mission,
+                agent_id="devops_deploy",
+                display_name="Deploy Engineer",
+                message=f"Local preview verified: {forge.preview_url}",
+            )
+        elif forge.preview_reachable is False and forge.preview_log_path:
+            preview_status = "FAILED"
             mission.artifacts.update(
                 {
-                    "preview_pid": preview_pid,
-                    "preview_port": preview_port,
-                    "preview_log_path": preview_log_path,
+                    "preview_log_path": forge.preview_log_path,
                 }
             )
-            if build.preview.reachable and build.preview_url:
-                mission.preview_url = build.preview_url
-                preview_status = build.preview_url
-                append_timeline(
-                    mission,
-                    agent_id="devops_deploy",
-                    display_name="Deploy Engineer",
-                    message=f"Local preview verified: {build.preview_url}",
-                )
-            else:
-                preview_status = "FAILED"
-                append_timeline(
-                    mission,
-                    agent_id="devops_deploy",
-                    display_name="Deploy Engineer",
-                    message=f"Local preview failed — see log {preview_log_path}",
-                )
+            append_timeline(
+                mission,
+                agent_id="devops_deploy",
+                display_name="Deploy Engineer",
+                message=f"Local preview failed — see log {forge.preview_log_path}",
+            )
 
         deploy_review = review_action("deploy.vercel_deploy")
         mission.skill_calls.append(
@@ -338,7 +368,7 @@ class AgentMissionRunner:
         )
         approval_message = (
             "Packaging requires approval"
-            if build.runtime == "cli"
+            if forge.runtime == "cli"
             else "Deployment requires approval"
         )
         append_timeline(
@@ -351,33 +381,40 @@ class AgentMissionRunner:
 
         mission.status = (
             MissionStatus.WAITING_APPROVAL
-            if build.build_passed and deploy_review.requires_approval
+            if forge.build_passed and deploy_review.requires_approval
             else MissionStatus.COMPLETED
-            if build.build_passed
+            if forge.build_passed
             else MissionStatus.FAILED
         )
         mission.final_report = {
-            "app_name": build.app_name,
-            "app_type": build.app_type,
-            "path": build.project_path,
-            "build_status": "PASS" if build.build_passed else "FAIL",
-            "preview_url": build.preview_url,
+            "app_name": forge.app_name or app_request.app_name,
+            "app_type": forge.app_type or app_request.app_type,
+            "path": forge.workspace_path or str(project_path),
+            "build_status": "PASS" if forge.build_passed else "FAIL",
+            "preview_url": forge.preview_url,
             "preview_status": preview_status,
-            "preview_log_path": preview_log_path,
-            "preview_pid": preview_pid,
-            "preview_port": preview_port,
-            "runtime": build.runtime,
-            "run_command": build.run_command,
-            "deployment_status": "approval required" if build.build_passed else "blocked",
+            "runtime": forge.runtime or app_request.runtime,
+            "run_command": forge.run_command,
+            "deployment_status": "approval required" if forge.build_passed else "blocked",
             "evidence_log": str(self.store._path(mission.mission_id)),
             "assumptions": mission.artifacts.get("assumptions", []),
             "app_spec_summary": mission.artifacts.get("app_spec_summary"),
-            "files_written": build.files_written[:16],
-            "validation_commands": [entry["command"] for entry in mission.commands_run],
+            "files_written": forge.files_changed[:16],
+            "validation_commands": [entry.get("command", "") for entry in forge.commands_run],
+            "forge_engine": forge.engine_id,
+            "engine_display_name": forge.engine_display_name,
+            "engine_status": forge.status,
+            "engine_reason": forge.engine_reason,
+            "setup_hint": forge.setup_hint,
+            "external_engine_available": forge.engine_id != "deterministic_template",
+            "fallback_used": forge.fallback_used or allow_fallback,
+            "forge_evidence_paths": forge.evidence_paths,
+            "forge_stdout_log": forge.stdout_log[:500],
+            "forge_stderr_log": forge.stderr_log[:500],
         }
         prime_close = (
             "App ready. Package this app? yes/no"
-            if build.runtime == "cli"
+            if forge.runtime == "cli"
             else "App ready. Deploy this app? yes/no"
         )
         append_timeline(
