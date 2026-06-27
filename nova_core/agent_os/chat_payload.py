@@ -63,6 +63,7 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
         }
         for index, event in enumerate(timeline_events)
     ]
+    graph_nodes = (mission.artifacts.get("mission_graph") or {}).get("nodes", [])
     approval_kind = _approval_kind(mission)
     approval_question = _approval_question(mission)
     actions: list[dict[str, Any]] = []
@@ -115,6 +116,7 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
         "status": mission.status.value,
         "mission_title": mission.user_request,
         "agent_timeline": agent_timeline,
+        "graph_nodes": graph_nodes,
         "result": {
             "app_name": report.get("app_name", mission.artifacts.get("app_name")),
             "app_type": report.get("app_type", mission.artifacts.get("app_type")),
@@ -133,6 +135,11 @@ def build_agent_os_chat_payload(mission: AgentMission) -> dict[str, Any]:
             ),
             "files_written": report.get("files_written", mission.files_touched[:16]),
             "validation_commands": report.get("validation_commands", []),
+            "forge_engine": report.get("forge_engine")
+            or (mission.artifacts.get("mission_graph") or {}).get("engine_selected"),
+            "mission_graph_version": (mission.artifacts.get("mission_graph") or {}).get(
+                "graph_version"
+            ),
         },
         "actions": actions,
         "text": _short_text(mission),

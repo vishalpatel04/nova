@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     nova_gmail_client_secret: str = Field(default="", alias="NOVA_GMAIL_CLIENT_SECRET")
     nova_gmail_send_enabled: bool = Field(default=False, alias="NOVA_GMAIL_SEND_ENABLED")
     nova_gmail_readonly_enabled: bool = Field(default=False, alias="NOVA_GMAIL_READONLY_ENABLED")
+    nova_openhands_url: str = Field(default="", alias="NOVA_OPENHANDS_URL")
+    nova_openhands_cmd: str = Field(default="", alias="NOVA_OPENHANDS_CMD")
+    nova_claude_code_cmd: str = Field(default="claude", alias="NOVA_CLAUDE_CODE_CMD")
+    nova_codex_cmd: str = Field(default="codex", alias="NOVA_CODEX_CMD")
+    nova_forge_default_engine: str = Field(
+        default="deterministic_template", alias="NOVA_FORGE_DEFAULT_ENGINE"
+    )
+    nova_reasoning_model: str = Field(default="", alias="NOVA_REASONING_MODEL")
     nova_n8n_base_url: str = Field(default="", alias="NOVA_N8N_BASE_URL")
     nova_openclaw_base_url: str = Field(default="", alias="NOVA_OPENCLAW_BASE_URL")
     nova_shortcuts_enabled: bool = Field(default=False, alias="NOVA_SHORTCUTS_ENABLED")

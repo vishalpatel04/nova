@@ -56,6 +56,7 @@ from nova_core.capabilities.resolver import (
     resolve_chat_message,
 )
 from nova_core.devices.availability import get_worker_availability
+from nova_core.forge.selector import format_external_engine_message, suggest_forge_engine
 from nova_core.memory.access_policy import AccessProfile
 from nova_core.memory.project_history import (
     format_last_failure,
@@ -1838,6 +1839,11 @@ class ChatService:
             app_request = parse_app_request(f"build a simple web app for {request}")
         if app_request is None:
             return "Could not parse app build request."
+        forge_msg = format_external_engine_message(request, self.settings)
+        if forge_msg and "fallback scaffold" not in request.lower():
+            explicit = suggest_forge_engine(request)
+            if explicit.suggest_external:
+                return forge_msg
         session_id = _kw.get("session_id")
         if app_request.requires_clarification:
             return app_request.clarification_message

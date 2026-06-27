@@ -1,6 +1,8 @@
 # NOVA Investor Demo Checklist
 
-Premium Agent OS demo inside NOVAGenie chat — conversational spec, visible workflow, Gmail draft with approval gates.
+Premium Agent OS demo inside NOVAGenie chat — NOVA orchestrates local Qwen reasoning, MissionGraph evidence, Forge engines (template fallback), and Gmail draft with approval gates.
+
+**Pitch:** NOVA does not replace Claude Code or OpenHands — it orchestrates them with memory, UI, Sentry approvals, and evidence.
 
 ## 1. Start services
 

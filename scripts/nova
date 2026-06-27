@@ -68,24 +68,114 @@ def _lane_status(model: str, installed: list[str]) -> str:
     return "missing"
 
 
-def cmd_models(_: argparse.Namespace) -> int:
+def cmd_models(args: argparse.Namespace) -> int:
     settings = Settings()
     installed = _fetch_installed_models()
+    if getattr(args, "recommend", False):
+        from nova_core.models.lanes import recommend_lanes
+
+        print("Recommended lanes:")
+        for lane, model in recommend_lanes(settings).items():
+            print(f"- {lane}: {model}")
+        return 0
+    if getattr(args, "set_lane", None):
+        lane = args.set_lane
+        model = args.model_name
+        env_map = {
+            "local_fast": "NOVA_LOCAL_MODEL",
+            "local_coder": "NOVA_CODER_MODEL",
+            "local_reasoning": "NOVA_REASONING_MODEL",
+            "external_coding": "NOVA_FORGE_DEFAULT_ENGINE",
+        }
+        env_key = env_map.get(lane)
+        if not env_key:
+            print(f"Unknown lane: {lane}")
+            return 1
+        print(f"Set {env_key}={model} in your shell or .env")
+        return 0
+    from nova_core.models.lanes import lane_statuses
+
     lanes = {
         "local_default": settings.nova_local_model or settings.nova_ollama_model or "(auto)",
         "local_coder": settings.nova_coder_model or "(not set)",
         "local_long_context": settings.nova_long_context_model or "(not set)",
+        "local_reasoning": settings.nova_reasoning_model or "(not set)",
         "qwen": settings.nova_qwen_model or "(auto)",
     }
     print("Model lanes:")
     for lane, model in lanes.items():
         print(f"- {lane}: {model} [{_lane_status(model, installed)}]")
+    print("\nLane registry:")
+    for row in lane_statuses(settings):
+        print(
+            f"- {row.lane}: configured={row.configured} "
+            f"installed={row.installed} recommended={row.recommended}"
+        )
     print("\nInstalled Ollama models:")
     if installed:
         for name in installed:
             print(f"- {name}")
     else:
         print("- (none reachable — start Ollama or run: nova pull-model <name>)")
+    return 0
+
+
+def cmd_forge_engines(_: argparse.Namespace) -> int:
+    from apps.api.services.forge_engine_service import ForgeEngineService
+
+    for row in ForgeEngineService().engines_status():
+        avail = "yes" if row["available"] else "no"
+        print(f"- {row['engine_id']} ({row['display_name']}) available={avail}")
+        if not row["available"]:
+            print(f"  hint: {row['setup_hint'][:120]}...")
+    return 0
+
+
+def cmd_forge_check(_: argparse.Namespace) -> int:
+    from apps.api.services.forge_engine_service import ForgeEngineService
+
+    svc = ForgeEngineService()
+    for row in svc.engines_status():
+        print(f"{row['engine_id']}: {'OK' if row['available'] else 'MISSING'}")
+    return 0
+
+
+def cmd_forge_run(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from apps.api.services.forge_engine_service import ForgeEngineService
+
+    project = Path(args.project).expanduser() if args.project else None
+    out = ForgeEngineService().run(
+        args.task,
+        project_path=project,
+        engine_id=args.engine or None,
+    )
+    print(json.dumps(out, indent=2))
+    return 0 if out["result"]["success"] else 1
+
+
+def cmd_forge_set_engine(args: argparse.Namespace) -> int:
+    print(f"Set NOVA_FORGE_DEFAULT_ENGINE={args.engine} in your shell or .env")
+    return 0
+
+
+def cmd_voice_status(_: argparse.Namespace) -> int:
+    from nova_core.voice.wake_runtime import runtime_status
+
+    st = runtime_status()
+    print(f"backend: {st.backend}")
+    print(f"openwakeword: {st.openwakeword}")
+    print(f"phrase_fallback: {st.phrase_fallback}")
+    print(st.setup_hint)
+    return 0
+
+
+def cmd_voice_setup_ow(_: argparse.Namespace) -> int:
+    from nova_core.voice.openwakeword_adapter import setup_hint_markdown
+
+    print(setup_hint_markdown())
+    print("\nOptional: pip install openwakeword")
     return 0
 
 
@@ -308,8 +398,16 @@ async def _voice_transcript_once(transcript: str, *, session_id: str | None) -> 
 
 
 def cmd_voice(args: argparse.Namespace) -> int:
-    if args.transcript:
-        return asyncio.run(_voice_transcript_once(args.transcript, session_id=args.session_id))
+    if getattr(args, "voice_command", None) == "status":
+        return cmd_voice_status(args)
+    if getattr(args, "voice_command", None) == "setup-openwakeword":
+        return cmd_voice_setup_ow(args)
+    if args.transcript or getattr(args, "simulate", ""):
+        text = args.transcript or args.simulate
+        return asyncio.run(_voice_transcript_once(text, session_id=args.session_id))
+    if getattr(args, "listen", False):
+        print("Live mic listen requires openWakeWord — use --simulate for CI.")
+        return cmd_voice_status(args)
     print(
         "NOVA voice mode\n"
         "  --transcript 'hey nova build a todo app called voice tasks'\n"
@@ -338,7 +436,11 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status").set_defaults(func=cmd_status)
-    sub.add_parser("models").set_defaults(func=cmd_models)
+    models_p = sub.add_parser("models")
+    models_p.add_argument("--recommend", action="store_true")
+    models_p.add_argument("--set-lane", default=None)
+    models_p.add_argument("model_name", nargs="?", default="")
+    models_p.set_defaults(func=cmd_models)
     pull_p = sub.add_parser("pull-model")
     pull_p.add_argument("name")
     pull_p.set_defaults(func=cmd_pull_model)
@@ -399,12 +501,30 @@ def main() -> int:
     test_draft_p.set_defaults(func=cmd_gmail_test_draft)
 
     voice_p = sub.add_parser("voice")
+    voice_sub = voice_p.add_subparsers(dest="voice_command")
+    voice_sub.add_parser("status").set_defaults(func=cmd_voice_status)
+    voice_sub.add_parser("setup-openwakeword").set_defaults(func=cmd_voice_setup_ow)
     voice_p.add_argument("--debug", action="store_true")
     voice_p.add_argument("--wake-word", default="nova")
     voice_p.add_argument("--push-to-talk", action="store_true")
+    voice_p.add_argument("--listen", action="store_true")
     voice_p.add_argument("--transcript", default="")
+    voice_p.add_argument("--simulate", default="")
     voice_p.add_argument("--session-id", default=None)
-    voice_p.set_defaults(func=cmd_voice)
+    voice_p.set_defaults(func=cmd_voice, voice_command=None)
+
+    forge_p = sub.add_parser("forge")
+    forge_sub = forge_p.add_subparsers(dest="forge_command", required=True)
+    forge_sub.add_parser("engines").set_defaults(func=cmd_forge_engines)
+    forge_sub.add_parser("check").set_defaults(func=cmd_forge_check)
+    forge_run = forge_sub.add_parser("run")
+    forge_run.add_argument("task")
+    forge_run.add_argument("--project", default="")
+    forge_run.add_argument("--engine", default="")
+    forge_run.set_defaults(func=cmd_forge_run)
+    forge_set = forge_sub.add_parser("set-engine")
+    forge_set.add_argument("engine")
+    forge_set.set_defaults(func=cmd_forge_set_engine)
 
     args = parser.parse_args()
     return int(args.func(args))

@@ -26,14 +26,12 @@ class PreviewSession:
 
 def find_free_port(start: int = 5173, max_tries: int = 10) -> int:
     for port in range(start, start + max_tries):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", port))
-                return port
-            except OSError:
-                continue
-    raise RuntimeError(f"No free preview port in range {start}-{start + max_tries - 1}")
+        if is_port_available(port):
+            return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def is_port_available(port: int) -> bool:

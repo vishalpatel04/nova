@@ -38,3 +38,6 @@ infra/data/
 
 # Backups
 backups/
+
+# External research repos; do not vendor blindly
+external/

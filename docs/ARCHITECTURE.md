@@ -91,13 +91,46 @@ Shared Python domain logic:
 
 | Package | Purpose |
 |---------|---------|
-| `models/` | SQLAlchemy ORM, enums |
+| `models/` | SQLAlchemy ORM, enums, model lanes |
+| `mission_graph/` | MissionGraph state machine (LangGraph-style) |
+| `forge/` | Forge engine adapters (template, OpenHands, Claude, Codex) |
+| `gateway/` | Multi-channel message envelope (OpenClaw-inspired, skills blocked) |
+| `voice/` | Wake-word + transcript pipeline |
+| `agent_os/` | Prime/Forge/Nexus/Orbit mission execution |
 | `schemas/` | Pydantic settings and API DTOs |
-| `workflows/` | LangGraph-ready mission runner |
-| `agents/` | Agent registry from YAML |
-| `devices/` | Availability and heartbeat utilities |
 | `tools/` | Typed tool extension points |
 | `sentry/` | Logging and audit |
+
+## Agent OS stack (investor architecture)
+
+NOVA is the **local command centre** — not a replacement for Claude Code or OpenHands.
+
+```mermaid
+graph TB
+    UI[NOVAGenie / CLI / Voice]
+    Gateway[NOVA Gateway]
+    Graph[MissionGraph]
+    Prime[Prime / Commanders]
+    Forge[Forge Engines]
+    Sentry[Sentry Gate]
+
+    UI --> Gateway
+    Gateway --> Graph
+    Graph --> Prime
+    Prime --> Forge
+    Forge --> Template[deterministic_template]
+    Forge --> OH[OpenHands adapter]
+    Forge --> CC[Claude Code CLI]
+    Forge --> CX[Codex CLI]
+    Forge --> Sentry
+```
+
+- **MissionGraph** records node evidence for every mission
+- **Forge** delegates to external coding agents when configured
+- **OpenClaw skills are never executed** — gateway pattern only
+- **Investor demo fallback:** deterministic templates always work offline
+
+See [EXTERNAL_AGENT_STACK_AUDIT.md](./EXTERNAL_AGENT_STACK_AUDIT.md).
 
 ## Data flow: system_status mission
 

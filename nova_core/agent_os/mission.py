@@ -16,6 +16,7 @@ from nova_core.agent_os.timeline import (
     format_timeline_cli,
 )
 from nova_core.agent_os.workspace import redact_secrets, runs_dir
+from nova_core.mission_graph.langgraph_adapter import LangGraphAdapter
 from nova_core.orchestration.app_builder import (
     build_app,
     clean_project_workspace,
@@ -101,6 +102,8 @@ class AgentMissionRunner:
         mission = self.create_mission(user_request)
         if assumptions:
             mission.artifacts["assumptions"] = assumptions
+        graph_evidence = LangGraphAdapter().run(mission.mission_id, user_request)
+        mission.artifacts["mission_graph"] = graph_evidence.to_dict()
         mission.status = MissionStatus.RUNNING
         append_timeline(
             mission,
