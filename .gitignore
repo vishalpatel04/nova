@@ -41,3 +41,7 @@ backups/
 
 # External research repos; do not vendor blindly
 external/
+
+# Forge engine evidence (generated at runtime)
+.nova-forge-evidence/
+**/.nova-forge-evidence/

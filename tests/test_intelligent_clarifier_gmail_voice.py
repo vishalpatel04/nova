@@ -65,7 +65,7 @@ async def test_invalid_qwen_output_falls_back(test_settings: Settings) -> None:
     )
 
     with patch(
-        "nova_core.orchestration.qwen_clarifier.ProviderRuntime.infer",
+        "nova_core.orchestration.qwen_clarifier.ProviderRuntime.infer_reasoning_lane",
         new=AsyncMock(return_value=bad),
     ):
         plan = await generate_clarification_plan(test_settings, request)
@@ -109,7 +109,7 @@ async def test_qwen_valid_json_used(test_settings: Settings) -> None:
         output_tokens=1,
     )
     with patch(
-        "nova_core.orchestration.qwen_clarifier.ProviderRuntime.infer",
+        "nova_core.orchestration.qwen_clarifier.ProviderRuntime.infer_reasoning_lane",
         new=AsyncMock(return_value=good),
     ):
         plan = await generate_clarification_plan(test_settings, request)
