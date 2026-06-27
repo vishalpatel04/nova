@@ -138,11 +138,16 @@ def cmd_models(args: argparse.Namespace) -> int:
 
 
 def cmd_models_test_anthropic(_: argparse.Namespace) -> int:
-    from nova_core.providers.reasoning_lane import anthropic_configured, anthropic_status_redacted
+    from nova_core.providers.reasoning_lane import (
+        anthropic_configured,
+        anthropic_model_name,
+        sanitize_anthropic_error,
+    )
+    from nova_core.providers.router import ProviderName
     from nova_core.providers.runtime import InferenceRequest, ProviderRuntime
 
     settings = Settings()
-    status = anthropic_status_redacted(settings)
+    model = anthropic_model_name(settings)
     if not anthropic_configured(settings):
         print("Anthropic test: SKIPPED (not configured)")
         print("Set NOVA_ANTHROPIC_ENABLED=true and ANTHROPIC_API_KEY in .env")
@@ -151,22 +156,36 @@ def cmd_models_test_anthropic(_: argparse.Namespace) -> int:
     async def _run() -> int:
         runtime = ProviderRuntime(settings)
         try:
-            result = await runtime.infer_reasoning_lane(
+            result = await runtime.infer_anthropic_direct(
                 InferenceRequest(
                     prompt="Return OK",
                     system_prompt="Reply with exactly OK and nothing else.",
                     intent="anthropic_health_check",
-                ),
-                purpose="review",
+                )
             )
-        except Exception:
+        except Exception as exc:
             print("Anthropic test: FAIL")
+            print(
+                f"error: {sanitize_anthropic_error(str(exc), api_key=settings.nova_anthropic_api_key)}"
+            )
+            print(f"model={model}")
+            print("hint: check NOVA_ANTHROPIC_MODEL and ANTHROPIC_API_KEY")
             return 1
-        if result.error or "ok" not in result.content.lower():
+        if (
+            result.provider != ProviderName.ANTHROPIC
+            or result.error
+            or "ok" not in result.content.lower()
+        ):
+            detail = result.error or "unexpected response"
             print("Anthropic test: FAIL")
+            print(
+                f"error: {sanitize_anthropic_error(detail, api_key=settings.nova_anthropic_api_key)}"
+            )
+            print(f"model={result.model or model}")
+            print("hint: check NOVA_ANTHROPIC_MODEL and ANTHROPIC_API_KEY")
             return 1
         print("Anthropic test: OK")
-        print(f"model={status['model']} provider={result.provider.value}")
+        print(f"model={result.model} provider={result.provider.value}")
         return 0
 
     return asyncio.run(_run())

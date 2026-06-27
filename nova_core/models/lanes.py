@@ -30,7 +30,7 @@ LANE_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "anthropic_reasoning": {
         "description": "Anthropic Claude API for clarification and review",
-        "candidates": ("claude-3-5-sonnet-latest",),
+        "candidates": ("claude-sonnet-4-6",),
         "env": "NOVA_ANTHROPIC_MODEL",
     },
 }

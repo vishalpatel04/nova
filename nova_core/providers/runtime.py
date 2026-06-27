@@ -180,6 +180,16 @@ class ProviderRuntime:
                 )
         return await self.infer(request)
 
+    async def infer_anthropic_direct(self, request: InferenceRequest) -> InferenceResult:
+        """Call Anthropic only — no local fallback (health checks / CLI test)."""
+        from nova_core.providers.reasoning_lane import anthropic_configured
+
+        if not anthropic_configured(self.settings):
+            raise RuntimeError("Anthropic is not configured")
+        if not self._configured(ProviderName.ANTHROPIC):
+            raise RuntimeError("Anthropic provider is disabled")
+        return await self._infer_anthropic(request)
+
     async def stream(
         self,
         request: InferenceRequest,
@@ -618,11 +628,13 @@ class ProviderRuntime:
         )
 
     async def _infer_anthropic(self, request: InferenceRequest) -> InferenceResult:
+        from nova_core.providers.reasoning_lane import anthropic_model_name
+
         headers = {
             "x-api-key": self.settings.nova_anthropic_api_key,
             "anthropic-version": "2023-06-01",
         }
-        model = self.settings.nova_anthropic_model or "claude-3-5-sonnet-latest"
+        model = anthropic_model_name(self.settings)
         payload = {
             "model": model,
             "max_tokens": 800,
