@@ -22,6 +22,13 @@ def test_parse_agent_mention_unknown_returns_none() -> None:
     assert body == "@Unknown hello"
 
 
+def test_prime_mention_routes_to_awareness() -> None:
+    agent, body = parse_agent_mention("@Prime summarize the mission")
+    assert agent == "prime"
+    routed = route_mention_intent(agent, body)
+    assert routed == ("agent_awareness", {"agent": "prime", "request": body})
+
+
 def test_agent_reports_from_timeline() -> None:
     timeline = [
         {
@@ -128,6 +135,24 @@ def test_chat_payload_includes_war_room_fields() -> None:
     payload = build_agent_os_chat_payload(_sample_mission())
     assert payload["agent_reports"]
     assert payload["war_room_roster"]
+    assert payload["agent_inspectors"]
+    assert payload["agent_work_feed"]
     assert payload["graph_nodes"]
     assert any("Forge" in r["agent"] or "forge" in r["agent_id"] for r in payload["agent_reports"])
     assert any("QA" in r["agent"] for r in payload["agent_reports"])
+    assert len(payload["graph_nodes"]) >= 11
+    assert [node["display_name"] for node in payload["graph_nodes"][:3]] == [
+        "Classify",
+        "Retrieve",
+        "Clarify",
+    ]
+    inspectors = {row["agent_id"]: row for row in payload["agent_inspectors"]}
+    for agent_id in ("prime", "forge", "qa_engineer", "sentry"):
+        assert agent_id in inspectors
+        assert inspectors[agent_id]["role"]
+        assert inspectors[agent_id]["what_doing"]
+        assert inspectors[agent_id]["ask_command"].startswith("@")
+    assert inspectors["forge"]["metadata"]["forge_engine"] == "deterministic_template"
+    assert inspectors["sentry"]["needs_from_user"] == "Deploy this app?"
+    assert payload["voice_status"]["fallback_message"]
+    assert "push-to-talk" in payload["voice_status"]["fallback_message"].lower()

@@ -244,7 +244,7 @@ struct GenieChatView: View {
                         .foregroundStyle((voice.isRecording || voice.isWakeListening) ? .red : .primary)
                 }
                 .buttonStyle(.plain)
-                .help("Push-to-talk")
+                .help("Click mic, speak command, release/auto-send.")
 
                 TextEditor(text: $appState.chatDraft)
                     .font(.body)
@@ -308,13 +308,15 @@ struct GenieChatView: View {
                 if appState.voiceAutoSendAfterTranscription {
                     await appState.sendChatMessage(transcript)
                 }
+            } else if appState.voiceWakeWordEnabled {
+                appState.chatError = "I didn't catch a wake phrase. Try push-to-talk or type the command."
             }
         } else {
-            await startVoiceCapture()
+            await startVoiceCapture(forcePushToTalk: true)
         }
     }
 
-    private func startVoiceCapture() async {
+    private func startVoiceCapture(forcePushToTalk: Bool = false) async {
         if appState.voiceKillSwitch || !appState.voiceInputEnabled {
             appState.chatError = "Voice input is disabled."
             return
@@ -325,11 +327,11 @@ struct GenieChatView: View {
             return
         }
         do {
-            if appState.voiceWakeWordEnabled {
+            if appState.voiceWakeWordEnabled && !forcePushToTalk {
                 if voice.supportsWakeWord {
                     try await voice.startWakeListening()
                 } else {
-                    appState.chatError = "Wake word requires on-device speech recognition."
+                    appState.chatError = "Wake word is experimental. Use push-to-talk for demo."
                 }
             } else {
                 try await voice.startPushToTalk()
@@ -371,7 +373,7 @@ struct GenieChatView: View {
         case voice.phase == .transcribing:
             label = "Transcribing"
         case appState.voiceInputEnabled && appState.voiceWakeWordEnabled:
-            label = voice.supportsWakeWord ? "Ready" : "Wake unsupported"
+            label = voice.supportsWakeWord ? "Wake experimental" : "Push-to-talk"
         case appState.voiceInputEnabled:
             label = "Idle"
         default:

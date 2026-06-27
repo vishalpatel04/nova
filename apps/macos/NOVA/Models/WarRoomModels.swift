@@ -39,15 +39,98 @@ struct WarRoomRosterEntry: Codable, Equatable, Identifiable {
 struct MissionGraphNodeViewModel: Codable, Equatable, Identifiable {
     var id: String { nodeId }
     let nodeId: String
+    let publicId: String?
     let displayName: String
     let status: String
     let outputSummary: String
+    let durationMs: Int?
+    let selectedAgent: String?
+    let evidence: [String]?
+    let error: String?
 
     enum CodingKeys: String, CodingKey {
         case nodeId = "node_id"
+        case publicId = "public_id"
         case displayName = "display_name"
         case status
         case outputSummary = "output_summary"
+        case durationMs = "duration_ms"
+        case selectedAgent = "selected_agent"
+        case evidence
+        case error
+    }
+}
+
+struct WarRoomAgentInspector: Codable, Equatable, Identifiable {
+    var id: String { agentId }
+    let agentId: String
+    let displayName: String
+    let role: String
+    let status: String
+    let currentTask: String
+    let lastReport: String
+    let relatedNodeIds: [String]
+    let relatedNodes: [MissionGraphNodeViewModel]
+    let evidencePaths: [String]
+    let files: [String]
+    let commands: [String]
+    let whatDoing: String
+    let needsFromUser: String
+    let askCommand: String
+    let metadata: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case agentId = "agent_id"
+        case displayName = "display_name"
+        case role
+        case status
+        case currentTask = "current_task"
+        case lastReport = "last_report"
+        case relatedNodeIds = "related_node_ids"
+        case relatedNodes = "related_nodes"
+        case evidencePaths = "evidence_paths"
+        case files
+        case commands
+        case whatDoing = "what_doing"
+        case needsFromUser = "needs_from_user"
+        case askCommand = "ask_command"
+        case metadata
+    }
+}
+
+struct WarRoomWorkFeedItem: Codable, Equatable, Identifiable {
+    let id: String
+    let agentId: String
+    let agent: String
+    let status: String
+    let message: String
+    let timestamp: String?
+    let evidencePaths: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case agentId = "agent_id"
+        case agent
+        case status
+        case message
+        case timestamp
+        case evidencePaths = "evidence_paths"
+    }
+}
+
+struct WarRoomVoiceStatus: Codable, Equatable {
+    let wakeWordSupported: Bool?
+    let wakeWordState: String?
+    let fallbackMessage: String?
+    let micHelper: String?
+    let missMessage: String?
+
+    enum CodingKeys: String, CodingKey {
+        case wakeWordSupported = "wake_word_supported"
+        case wakeWordState = "wake_word_state"
+        case fallbackMessage = "fallback_message"
+        case micHelper = "mic_helper"
+        case missMessage = "miss_message"
     }
 }
 

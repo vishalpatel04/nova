@@ -8,7 +8,10 @@ struct AgentOSMissionPayload: Codable, Equatable {
     let agentTimeline: [AgentOSTimelineEntry]
     let agentReports: [WarRoomAgentReport]?
     let warRoomRoster: [WarRoomRosterEntry]?
+    let agentInspectors: [WarRoomAgentInspector]?
+    let agentWorkFeed: [WarRoomWorkFeedItem]?
     let graphNodes: [MissionGraphNodeViewModel]?
+    let voiceStatus: WarRoomVoiceStatus?
     let result: AgentOSMissionResult
     let actions: [AgentOSMissionAction]
     let text: String
@@ -21,7 +24,10 @@ struct AgentOSMissionPayload: Codable, Equatable {
         case agentTimeline = "agent_timeline"
         case agentReports = "agent_reports"
         case warRoomRoster = "war_room_roster"
+        case agentInspectors = "agent_inspectors"
+        case agentWorkFeed = "agent_work_feed"
         case graphNodes = "graph_nodes"
+        case voiceStatus = "voice_status"
         case result
         case actions
         case text

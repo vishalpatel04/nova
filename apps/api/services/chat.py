@@ -42,6 +42,7 @@ from apps.api.services.runtime import (
 )
 from nova_core.agent_os.chat_payload import build_agent_os_chat_payload
 from nova_core.agent_os.models import AgentMission
+from nova_core.agent_os.models import MissionStatus as AgentOSMissionStatus
 from nova_core.agent_os.workspace import workspace_root
 from nova_core.auth.principal import Principal
 from nova_core.background.schedules import daily_cron_at
@@ -285,6 +286,7 @@ class ChatService:
             "agent_os_deploy_yes": self._agent_os_deploy_yes,
             "agent_os_deploy_no": self._agent_os_deploy_no,
             "agent_os_preview": self._agent_os_preview,
+            "agent_awareness": self._agent_awareness,
             "system_memory_status": self._system_memory_status,
             "orbit_email_draft": self._orbit_email_draft,
             "sentry_summary": self._sentry_summary,
@@ -1024,6 +1026,10 @@ class ChatService:
         if lowered in {"system status", "status", "system_status"}:
             return "system_status", {}
 
+        awareness = self._parse_agent_awareness(text)
+        if awareness is not None:
+            return awareness
+
         if is_system_memory_status_request(text):
             return "system_memory_status", {}
 
@@ -1367,6 +1373,26 @@ class ChatService:
             return "blocked", {}
 
         return "general", {}
+
+    def _parse_agent_awareness(self, text: str) -> tuple[str, dict[str, str]] | None:
+        lowered = text.lower().strip().rstrip("?")
+        patterns: tuple[tuple[tuple[str, ...], str], ...] = (
+            (("what are agents doing", "what are the agents doing", "what happened"), "all"),
+            (("summarize the mission", "mission summary"), "prime"),
+            (("what is forge doing", "what's forge doing", "forge status"), "forge"),
+            (("what engine are you using", "forge engine", "what engine is forge using"), "forge"),
+            (("what does sentry need", "what needs approval", "sentry need"), "sentry"),
+            (("validation status", "qa status", "what did qa validate"), "qa"),
+            (
+                ("what context did archive retrieve", "archive status", "retrieved context"),
+                "archive",
+            ),
+            (("next milestone", "next steps", "roadmap"), "nexus"),
+        )
+        for phrases, agent in patterns:
+            if lowered in phrases or any(phrase in lowered for phrase in phrases):
+                return "agent_awareness", {"agent": agent, "request": text}
+        return None
 
     def _collect_handler_extra(self, intent: str) -> dict[str, Any]:
         extra: dict[str, Any] = {}
@@ -2351,25 +2377,97 @@ class ChatService:
             return "No verified preview URL for the latest app mission."
         return f"Preview: {mission.preview_url}"
 
-    async def _sentry_summary(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
-        lines = ["Sentry approval summary:"]
+    def _latest_agent_mission(self) -> AgentMission | None:
+        svc = AgentMissionService(self.session, self.settings)
         mission_id = getattr(self, "_last_agent_mission_id", None)
         if mission_id:
-            svc = AgentMissionService(self.session, self.settings)
             mission = svc.get_mission(mission_id)
             if mission is not None:
-                if mission.status.value == "waiting_approval":
-                    runtime = mission.artifacts.get("runtime") or mission.final_report.get(
-                        "runtime", "web"
-                    )
-                    kind = "package" if runtime == "cli" else "deploy"
-                    lines.append(f"- Mission {mission_id}: awaiting {kind} approval")
-                else:
-                    deploy = mission.final_report.get("deployment_status", "unknown")
-                    lines.append(
-                        f"- Mission {mission_id}: status={mission.status.value}, "
-                        f"deployment={deploy}"
-                    )
+                return mission
+        awaiting = svc.latest_awaiting_approval()
+        if awaiting is not None:
+            return awaiting
+        missions: list[AgentMission] = []
+        for candidate_id in svc.runner.store.list_ids():
+            candidate = svc.get_mission(candidate_id)
+            if candidate is not None:
+                missions.append(candidate)
+        if not missions:
+            return None
+        return max(missions, key=lambda item: item.updated_at)
+
+    async def _agent_awareness(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        mission = self._latest_agent_mission()
+        if mission is None:
+            return (
+                "No recent Agent OS mission yet. Start a mission or mention @Forge to assign one."
+            )
+
+        payload = build_agent_os_chat_payload(mission)
+        agent = args.get("agent", "all").strip().lower()
+        inspectors = {str(row.get("agent_id")): row for row in payload.get("agent_inspectors", [])}
+        if agent == "qa":
+            agent = "qa_engineer"
+
+        if agent == "all":
+            lines = [
+                "Current agent activity:",
+                f"- Mission: {payload.get('mission_title', mission.user_request)}",
+                f"- Status: {mission.status.value}",
+            ]
+            for item in payload.get("agent_work_feed", [])[-6:]:
+                lines.append(f"- {item.get('agent', 'Agent')}: {item.get('message', '')}")
+            return "\n".join(lines)
+
+        if agent == "sentry":
+            pending = (
+                payload.get("result", {}).get("approval_question")
+                if mission.status == AgentOSMissionStatus.WAITING_APPROVAL
+                else ""
+            )
+            if pending:
+                return f"Sentry: {pending} Risk level: {mission.risk_level}."
+            return f"Sentry: no approval is pending. Mission status: {mission.status.value}."
+
+        inspector = inspectors.get(agent)
+        if inspector is None:
+            return "No active task yet. Mention @Agent to assign one."
+
+        lines = [
+            f"{inspector.get('display_name', agent.title())}: {inspector.get('role', 'Agent')}",
+            f"Status: {inspector.get('status', 'idle')}",
+            f"Current task: {inspector.get('current_task', '')}",
+        ]
+        last_report = str(inspector.get("last_report") or "")
+        if last_report:
+            lines.append(f"Last report: {last_report}")
+        what_doing = str(inspector.get("what_doing") or "")
+        if what_doing:
+            lines.append(f"What I'm doing: {what_doing}")
+        needs = str(inspector.get("needs_from_user") or "")
+        if needs:
+            lines.append(f"What I need from you: {needs}")
+        metadata = inspector.get("metadata") or {}
+        if agent == "forge" and metadata.get("forge_engine"):
+            lines.append(f"Engine: {metadata['forge_engine']}")
+        return "\n".join(lines)
+
+    async def _sentry_summary(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
+        lines = ["Sentry approval summary:"]
+        mission = self._latest_agent_mission()
+        if mission is not None:
+            if mission.status.value == "waiting_approval":
+                runtime = mission.artifacts.get("runtime") or mission.final_report.get(
+                    "runtime", "web"
+                )
+                kind = "package" if runtime == "cli" else "deploy"
+                lines.append(f"- Mission {mission.mission_id}: awaiting {kind} approval")
+            else:
+                deploy = mission.final_report.get("deployment_status", "unknown")
+                lines.append(
+                    f"- Mission {mission.mission_id}: status={mission.status.value}, "
+                    f"deployment={deploy}"
+                )
         orbit_svc = OrbitEmailService(self.settings)
         if orbit_svc.latest_awaiting_send() is not None:
             lines.append("- Orbit: investor email draft awaiting send approval")
@@ -2390,13 +2488,9 @@ class ChatService:
         return "\n".join(lines)
 
     async def _qa_status(self, principal: Principal, args: dict[str, str], **_kw: Any) -> str:
-        mission_id = getattr(self, "_last_agent_mission_id", None)
-        if not mission_id:
-            return "QA: no recent Agent OS mission to validate in this session."
-        svc = AgentMissionService(self.session, self.settings)
-        mission = svc.get_mission(mission_id)
+        mission = self._latest_agent_mission()
         if mission is None:
-            return f"QA: mission not found: {mission_id}"
+            return "QA: no recent Agent OS mission to validate in this session."
         report = mission.final_report
         build = report.get("build_status", "UNKNOWN")
         commands = report.get("validation_commands") or []

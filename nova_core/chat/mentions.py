@@ -32,6 +32,27 @@ def route_mention_intent(agent: str, body: str) -> tuple[str, dict[str, str]] | 
     """Map @agent prefix to closest existing chat intent handler."""
     if not body.strip():
         return None
+    lowered = body.lower()
+    status_words = (
+        "what",
+        "status",
+        "doing",
+        "need",
+        "approval",
+        "summarize",
+        "summary",
+        "engine",
+        "validation",
+        "context",
+        "happened",
+    )
+    if any(word in lowered for word in status_words) and agent in {
+        "prime",
+        "forge",
+        "archive",
+        "nexus",
+    }:
+        return "agent_awareness", {"agent": agent, "request": body}
     if agent == "forge":
         return "agent_os_mission", {"request": body}
     if agent == "archive":

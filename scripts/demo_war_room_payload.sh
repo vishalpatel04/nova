@@ -57,13 +57,36 @@ mission = AgentMission(
 payload = build_agent_os_chat_payload(mission)
 assert payload.get("agent_reports"), "missing agent_reports"
 assert payload.get("war_room_roster"), "missing war_room_roster"
-assert len(payload.get("graph_nodes") or []) >= 1, "missing graph_nodes"
+assert payload.get("agent_inspectors"), "missing agent_inspectors"
+assert payload.get("agent_work_feed"), "missing agent_work_feed"
+assert len(payload.get("graph_nodes") or []) >= 11, "missing mission_graph_nodes"
+assert payload.get("voice_status"), "missing voice_status"
+assert "push-to-talk" in payload["voice_status"]["fallback_message"].lower()
 agents = {r["agent_id"] for r in payload["agent_reports"]}
 for required in ("prime", "forge", "qa_engineer", "sentry"):
     assert required in agents, f"missing report for {required}"
+inspectors = {r["agent_id"]: r for r in payload["agent_inspectors"]}
+for required in ("prime", "forge", "qa_engineer", "sentry"):
+    assert required in inspectors, f"missing inspector for {required}"
+    assert inspectors[required]["what_doing"], f"missing work notes for {required}"
+assert [n["display_name"] for n in payload["graph_nodes"][:11]] == [
+    "Classify",
+    "Retrieve",
+    "Clarify",
+    "Select Commander",
+    "Select Engine",
+    "Plan",
+    "Execute",
+    "Validate",
+    "Review",
+    "Sentry",
+    "Final Report",
+]
 print("payload keys:", sorted(payload.keys()))
 print("agent report count:", len(payload["agent_reports"]))
 print("graph node count:", len(payload["graph_nodes"]))
+print("agent inspector count:", len(payload["agent_inspectors"]))
+print("voice:", payload["voice_status"]["fallback_message"])
 PY
 
 # Swift Codable sanity (optional when macOS sources present)

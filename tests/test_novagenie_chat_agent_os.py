@@ -139,3 +139,29 @@ async def test_chat_no_skips_deployment(
     payload = skip.get("agent_os_mission")
     assert payload is not None
     assert payload["result"]["deployment_status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_chat_answers_war_room_awareness_from_latest_mission(
+    db_session: AsyncSession, test_settings: Settings, workspace_tmp: Path
+) -> None:
+    svc = ChatService(db_session, test_settings)
+    principal = Principal(
+        principal_type="device",
+        principal_id="test-device",
+        user_id=test_settings.nova_default_user_id,
+        device_id="test-device",
+        token_role="client",
+    )
+    with patch("nova_core.forge.mission_executor.build_app") as mock_build:
+        mock_build.return_value = _mock_build_result(
+            workspace_tmp, "calculator", "arth", "arth-calculator-app"
+        )
+        await svc.handle_message(
+            message="create a calculator app named arth",
+            principal=principal,
+        )
+    status = await svc.handle_message(message="what is Forge doing?", principal=principal)
+    assert status["intent"] == "agent_awareness"
+    assert "Forge" in status["response"]
+    assert "Engine:" in status["response"]
