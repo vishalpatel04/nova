@@ -423,6 +423,15 @@ class AgentMissionRunner:
             display_name="Prime",
             message=prime_close,
         )
+        from nova_core.forge.investor_demo import (
+            apply_demo_timeline,
+            is_investor_demo_request,
+            stamp_demo_final_report,
+        )
+
+        if is_investor_demo_request(mission.user_request):
+            apply_demo_timeline(mission)
+            stamp_demo_final_report(mission)
         self.store.save(mission)
         return mission
 
@@ -483,12 +492,14 @@ class AgentMissionRunner:
         return mission
 
     def deploy_mission(self, mission_id: str) -> AgentMission:
+        from nova_core.branding import NOVA_OWNER_LABEL
+
         mission = self.approve_deployment(mission_id)
         append_timeline(
             mission,
             agent_id="devops_deploy",
             display_name="Deploy Engineer",
-            message="External deploy prepared — manual Vercel step not executed in demo v1",
+            message=f"External deploy prepared — {NOVA_OWNER_LABEL}",
         )
         mission.final_report["deployment_status"] = "prepared — external deploy not auto-run in v1"
         self.store.save(mission)

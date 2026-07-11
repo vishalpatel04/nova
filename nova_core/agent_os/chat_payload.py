@@ -90,6 +90,8 @@ def _approval_question(mission: AgentMission) -> str:
 
 def _short_text(mission: AgentMission) -> str:
     report = mission.final_report
+    if report.get("demo_chat_summary"):
+        return str(report["demo_chat_summary"])
     if report.get("summary") and not report.get("path"):
         return str(report["summary"])
     app_name = report.get("app_name", mission.artifacts.get("app_name", "App"))

@@ -13,7 +13,7 @@ TRAILING = r"(?:\s*$|[?.!,])"
 APP_BUILD_INTENT_RE = re.compile(
     rf"(?i){APP_BUILD_VERBS}\s+(?:me\s+)?(?:a\s+)?(?:[\w-]+\s+)*?"
     r"(?:calculator|todo|habit[\s-]?tracker|expense[\s-]?tracker|landing\s+page|crm|"
-    r"web\s+app|an?\s+app\b)"
+    r"web\s+app|an?\s+app\b|virat\s+kohli|kohli.*test\s+stats|test\s+stats.*kohli)"
 )
 
 # Ordered from most specific to least specific.
@@ -104,6 +104,19 @@ PARSE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         re.compile(rf"(?i){APP_BUILD_VERBS}\s+(?:a\s+)?landing\s+page{TRAILING}"),
     ),
     (
+        "kohli_stats",
+        "web",
+        re.compile(
+            rf"(?i)(?:{APP_BUILD_VERBS}\s+(?:a\s+)?(?:page|dashboard)\s+(?:on|about|for)\s+)?"
+            r"virat\s+kohli(?:\s+test\s+stats)?{TRAILING}"
+        ),
+    ),
+    (
+        "kohli_stats",
+        "web",
+        re.compile(rf"(?i).*\b(?:virat\s+kohli|\bkohli\b)\b.*test\s+stats{TRAILING}"),
+    ),
+    (
         "generic",
         "web",
         re.compile(
@@ -159,6 +172,7 @@ DEFAULT_DISPLAY_NAMES: dict[str, str] = {
     "todo": "NOVA Todo",
     "habit_tracker": "NOVA Habit Tracker",
     "expense_tracker": "NOVA Expense Tracker",
+    "kohli_stats": "Virat Kohli Test Stats",
 }
 
 
@@ -176,6 +190,7 @@ def _default_features(app_type: str) -> tuple[str, ...]:
             "localStorage",
         ),
         "landing_page": ("hero", "features", "how_it_works", "cta", "responsive"),
+        "kohli_stats": ("headline", "stat_cards", "stats_table", "sample_data"),
         "generic": ("placeholder_ui", "responsive", "readme"),
     }
     return features.get(app_type, ("placeholder_ui",))
@@ -194,6 +209,8 @@ def _display_name(app_type: str, custom: str | None) -> str:
     if custom:
         if app_type == "landing_page":
             return f"{custom} Landing Page"
+        if app_type == "kohli_stats":
+            return "Virat Kohli Test Stats"
         if app_type in {
             "calculator",
             "cli_calculator",
@@ -286,4 +303,6 @@ def project_dir_name(app_request: AppRequest) -> str:
         return "expense-tracker-app" if default else f"{slug}-expense-tracker-app"
     if app_request.app_type == "landing_page":
         return f"landing-page-{slug}"
+    if app_request.app_type == "kohli_stats":
+        return "virat-kohli-test-stats"
     return f"{slug}-web-app"

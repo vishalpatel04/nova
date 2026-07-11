@@ -74,6 +74,9 @@ struct MenuBarView: View {
             }
             .buttonStyle(.plain)
             Spacer()
+            Text("Owner: Wing Aditya Singh")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             Picker("Voice", selection: $appState.voiceMode) {
                 ForEach(MacAppState.VoiceMode.allCases, id: \.self) { mode in
                     Text(mode.displayName).tag(mode)

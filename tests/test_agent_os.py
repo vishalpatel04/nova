@@ -535,7 +535,12 @@ async def test_chat_todo_mission_not_general(
             message="build a todo app called demo", principal=principal
         )
         assert first["intent"] == "agent_os_mission"
-        assert "Proceed" in first["response"] or "proceed" in first["response"].lower()
+        lowered = first["response"].lower()
+        assert (
+            "proceed" in lowered
+            or "reply **yes** to build" in lowered
+            or "ready to build" in lowered
+        )
         resp = await svc.handle_message(
             message="yes",
             principal=principal,

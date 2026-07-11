@@ -188,6 +188,8 @@ def test_landing_template_includes_brand_copy() -> None:
     app_tsx = files["src/App.tsx"]
     assert "SusCo" in app_tsx
     assert "Shop sustainably" in app_tsx
+    assert "Owner: Wing Aditya Singh" in app_tsx
+    assert "Owner: Wing Aditya Singh" in app_tsx
 
 
 @pytest.mark.asyncio

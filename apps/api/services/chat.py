@@ -60,6 +60,11 @@ from nova_core.capabilities.resolver import (
 from nova_core.chat.mentions import parse_agent_mention, route_mention_intent
 from nova_core.devices.availability import get_worker_availability
 from nova_core.forge.engines.registry import get_engine
+from nova_core.forge.investor_demo import (
+    demo_chat_response,
+    is_investor_demo_request,
+    parse_investor_demo_request,
+)
 from nova_core.forge.selection_flow import (
     analyze_forge_selection,
     build_unavailable_engine_message,
@@ -449,6 +454,16 @@ class ChatService:
         if forge_start is not None:
             await self._persist_assistant(sessions, chat_session, forge_start)
             return forge_start
+
+        theme_response = await self._try_calculator_yellow_theme_update(
+            principal,
+            text,
+            chat_session.id,
+            routing=routing,
+        )
+        if theme_response is not None:
+            await self._persist_assistant(sessions, chat_session, theme_response)
+            return theme_response
 
         intent, args = self._parse_intent(text)
         routing = self._router.route(text, intent=intent)
@@ -1981,7 +1996,7 @@ class ChatService:
             return (
                 "Usage: build a calculator app | build a todo app | build a landing page for <name>"
             )
-        app_request = parse_app_request(request)
+        app_request = parse_investor_demo_request(request) or parse_app_request(request)
         if app_request is None:
             app_request = parse_app_request(f"build a simple web app for {request}")
         if app_request is None:
@@ -1990,7 +2005,11 @@ class ChatService:
         session_id = _kw.get("session_id")
         if app_request.requires_clarification:
             return app_request.clarification_message
-        if session_id and (is_vague_app_request(app_request) or should_quick_confirm(app_request)):
+        if (
+            session_id
+            and not is_investor_demo_request(request)
+            and (is_vague_app_request(app_request) or should_quick_confirm(app_request))
+        ):
             message, plan = await build_clarification_message_async(self.settings, app_request)
             pending_svc = PendingToolIntentService(self.session)
             mode = "quick_confirm" if plan.proceed_with_confirmation else "clarification"
@@ -2015,7 +2034,72 @@ class ChatService:
             selected_engine="deterministic_template",
         )
         self._store_agent_mission_payload(mission)
+        if is_investor_demo_request(request):
+            return demo_chat_response(mission) or build_agent_os_chat_payload(mission)["text"]
         return svc.mission_timeline_text(mission.mission_id)
+
+    async def _try_calculator_yellow_theme_update(
+        self,
+        principal: Principal,
+        text: str,
+        session_id: str,
+        *,
+        routing: Any | None = None,
+    ) -> dict[str, Any] | None:
+        from pathlib import Path
+
+        from nova_core.forge.investor_demo import (
+            apply_calculator_yellow_theme,
+            apply_theme_update_timeline,
+            is_calculator_yellow_theme_request,
+            refresh_calculator_preview,
+        )
+
+        if not is_calculator_yellow_theme_request(text):
+            return None
+        mission_id = getattr(self, "_last_agent_mission_id", None)
+        if not mission_id:
+            return self._response(
+                "Build a calculator app first, then ask to make it yellow.",
+                intent="agent_os_theme_update",
+                routing=routing,
+                session_id=session_id,
+            )
+        svc = AgentMissionService(self.session, self.settings)
+        mission = svc.get_mission(mission_id)
+        if mission is None:
+            return None
+        app_type = mission.final_report.get("app_type") or mission.artifacts.get("app_type")
+        if app_type != "calculator":
+            return self._response(
+                "Theme update applies to the latest calculator mission only.",
+                intent="agent_os_theme_update",
+                routing=routing,
+                session_id=session_id,
+            )
+        project_path = Path(mission.final_report.get("path") or mission.workspace_path)
+        if not apply_calculator_yellow_theme(project_path):
+            return self._response(
+                "Could not update calculator theme.",
+                intent="agent_os_theme_update",
+                routing=routing,
+                session_id=session_id,
+            )
+        ok, _detail = refresh_calculator_preview(project_path)
+        apply_theme_update_timeline(mission)
+        if not ok:
+            mission.final_report["build_status"] = "FAIL"
+        svc.runner.store.save(mission)
+        self._store_agent_mission_payload(mission)
+        body = demo_chat_response(mission) or "Theme updated to yellow. Preview refreshed."
+        extra = self._collect_handler_extra("agent_os_mission")
+        return self._response(
+            body,
+            intent="agent_os_theme_update",
+            routing=routing,
+            session_id=session_id,
+            **extra,
+        )
 
     async def _try_resolve_pending_forge_engine(
         self,

@@ -32,6 +32,7 @@ def template_id_for_app_type(app_type: str) -> str:
         "habit_tracker": "habit_tracker_react_vite",
         "expense_tracker": "expense_tracker_react_vite",
         "landing_page": "landing_page_react_vite",
+        "kohli_stats": "kohli_stats_react_vite",
         "generic": "generic_react_vite",
     }
     return mapping.get(app_type, "generic_react_vite")
@@ -47,6 +48,7 @@ def build_app_spec(request: AppRequest) -> AppSpec:
         "habit_tracker": "Habit tracker with streaks, weekly grid, and localStorage persistence.",
         "expense_tracker": "Income/expense tracker with categories, balance, and localStorage.",
         "landing_page": f"Polished landing page for {request.app_name}.",
+        "kohli_stats": "Dark sports dashboard for Virat Kohli Test stats with sample demo data.",
         "generic": f"Simple web app scaffold for: {request.app_name}.",
     }
     pages = {
@@ -56,6 +58,7 @@ def build_app_spec(request: AppRequest) -> AppSpec:
         "habit_tracker": ("habits",),
         "expense_tracker": ("ledger",),
         "landing_page": ("landing",),
+        "kohli_stats": ("dashboard",),
         "generic": ("home",),
     }
     components = {
@@ -65,6 +68,7 @@ def build_app_spec(request: AppRequest) -> AppSpec:
         "habit_tracker": ("HabitGrid", "HabitCard", "StreakBadge"),
         "expense_tracker": ("TransactionForm", "TransactionList", "BalanceCard"),
         "landing_page": ("Hero", "Features", "HowItWorks", "CTA"),
+        "kohli_stats": ("Hero", "StatCards", "StatsTable"),
         "generic": ("AppShell", "PlaceholderPanel"),
     }
     interactions = {
@@ -74,6 +78,7 @@ def build_app_spec(request: AppRequest) -> AppSpec:
         "habit_tracker": ("add_habit", "mark_today", "view_streak"),
         "expense_tracker": ("add_transaction", "view_balance"),
         "landing_page": ("scroll", "cta_click"),
+        "kohli_stats": ("view_stats", "scan_table"),
         "generic": ("view_placeholder",),
     }
     criteria = {
@@ -109,6 +114,11 @@ def build_app_spec(request: AppRequest) -> AppSpec:
         "landing_page": (
             "Hero, features, how it works, CTA",
             "Responsive layout",
+            "npm run build passes",
+        ),
+        "kohli_stats": (
+            "Headline, stat cards, and stats table",
+            "Sample demo stats labeled clearly",
             "npm run build passes",
         ),
         "generic": (

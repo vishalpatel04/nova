@@ -136,6 +136,10 @@ Seven permanent commanders: **NOVA**, **MARS**, **MERCURY**, **JUPITER**, **VENU
 - [Foundation Slice 1 Plan](docs/FOUNDATION_SLICE_1_PLAN.md)
 - [ADRs](docs/adr/)
 
+## Credits
+
+**Owner: Wing Aditya Singh**
+
 ## License
 
 Private — Arth Agrawal.

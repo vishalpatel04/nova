@@ -7,6 +7,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from nova_core.branding import OWNER_FOOTER_CSS, OWNER_FOOTER_JSX
+from nova_core.forge.investor_demo import CALCULATOR_YELLOW_CSS
 from nova_core.orchestration.app_spec import AppSpec
 
 FileMap = dict[str, str]
@@ -269,10 +271,13 @@ export default function App() {
           </button>
         ))}
       </section>
+OWNER_FOOTER_PLACEHOLDER
     </main>
   )
 }
-""".replace("NOVA_CALCULATOR_TITLE", title)
+""".replace("NOVA_CALCULATOR_TITLE", title).replace(
+        "OWNER_FOOTER_PLACEHOLDER", OWNER_FOOTER_JSX.strip()
+    )
     return _scaffold(
         spec,
         {
@@ -312,49 +317,130 @@ export function evaluate(a: number, b: number, op: string): number {
   }
 }
 """,
+            "src/App.css": CALCULATOR_YELLOW_CSS + OWNER_FOOTER_CSS,
+        },
+    )
+
+
+def _kohli_stats_files(spec: AppSpec) -> FileMap:
+    title = spec.title
+    app_tsx = f"""export default function App() {{
+  const cards = [
+    {{ label: 'Test Matches', value: '113' }},
+    {{ label: 'Test Runs', value: '8,676' }},
+    {{ label: 'Test Average', value: '49.29' }},
+    {{ label: 'Test Centuries', value: '29' }},
+  ]
+  const rows = [
+    ['Runs', '8,676'],
+    ['Highest Score', '254*'],
+    ['Strike Rate', '55.51'],
+    ['50s / 100s', '30 / 29'],
+    ['Ducks', '14'],
+  ]
+  return (
+    <main className="app dashboard">
+      <header className="hero">
+        <p className="eyebrow">Cricket Analytics Dashboard</p>
+        <h1>{title}</h1>
+        <p className="subtitle">Professional test cricket overview — sample demo stats</p>
+      </header>
+      <section className="cards">
+        {{cards.map((card) => (
+          <article key={{card.label}} className="stat-card">
+            <span>{{card.label}}</span>
+            <strong>{{card.value}}</strong>
+          </article>
+        ))}}
+      </section>
+      <section className="table-wrap">
+        <h2>Key Test Metrics</h2>
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            {{rows.map(([metric, value]) => (
+              <tr key={{metric}}><td>{{metric}}</td><td>{{value}}</td></tr>
+            ))}}
+          </tbody>
+        </table>
+        <p className="sample-note">Sample demo stats for investor preview.</p>
+      </section>
+{OWNER_FOOTER_JSX.strip()}
+    </main>
+  )
+}}
+"""
+    return _scaffold(
+        spec,
+        {
+            "src/App.tsx": app_tsx,
             "src/App.css": """:root {
   color-scheme: dark;
   font-family: 'SF Pro Text', system-ui, sans-serif;
-  background: radial-gradient(circle at top, #1f2a44, #0b1020 55%);
+  background: linear-gradient(160deg, #0f172a 0%, #111827 45%, #1e293b 100%);
   min-height: 100vh;
+  color: #e2e8f0;
 }
 body { margin: 0; }
-.calculator {
-  max-width: 360px;
-  margin: 4rem auto;
-  padding: 1.5rem;
-  border-radius: 24px;
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+.dashboard {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem;
 }
+.hero { margin-bottom: 2rem; }
 .eyebrow {
-  margin: 0 0 0.5rem;
-  color: #93c5fd;
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
+  margin: 0;
+  color: #38bdf8;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-.display {
-  font-size: 2.5rem;
-  text-align: right;
-  padding: 1rem;
+h1 {
+  margin: 0.5rem 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+}
+.subtitle { color: #94a3b8; margin: 0; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #334155;
   border-radius: 16px;
-  background: #020617;
-  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
-.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
-button {
-  border: none;
-  border-radius: 14px;
-  padding: 1rem;
-  font-size: 1.1rem;
-  cursor: pointer;
-  background: #1e293b;
-  color: white;
+.stat-card span { color: #94a3b8; font-size: 0.85rem; }
+.stat-card strong { font-size: 1.6rem; color: #f8fafc; }
+.table-wrap {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid #334155;
+  border-radius: 18px;
+  padding: 1.25rem;
 }
-button.op { background: #334155; }
-button.equals { background: linear-gradient(135deg, #2563eb, #7c3aed); }
-""",
+.table-wrap h2 { margin-top: 0; font-size: 1.1rem; }
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  text-align: left;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #334155;
+}
+th { color: #94a3b8; font-weight: 600; }
+.sample-note {
+  margin: 1rem 0 0;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+"""
+            + OWNER_FOOTER_CSS,
         },
     )
 
@@ -697,6 +783,7 @@ def _landing_files(spec: AppSpec) -> FileMap:
         <h2>Ready to launch {title}?</h2>
         <button type="button">{cta}</button>
       </section>
+{OWNER_FOOTER_JSX.strip()}
     </main>
   )
 }}
@@ -711,7 +798,8 @@ body { margin: 0; background: linear-gradient(180deg, #f0fdf4 0%, #f8fafc 40%, #
 article { background: white; border-radius: 18px; padding: 1.25rem; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); border: 1px solid rgba(15, 23, 42, 0.05); }
 .how, .cta { margin-top: 3rem; text-align: center; }
 button { border: none; border-radius: 999px; padding: 0.9rem 1.6rem; background: #15803d; color: white; font-size: 1rem; font-weight: 600; cursor: pointer; box-shadow: 0 10px 24px rgba(21, 128, 61, 0.25); }
-""",
+"""
+            + OWNER_FOOTER_CSS,
         },
     )
 
@@ -860,6 +948,11 @@ TEMPLATES: dict[str, AppTemplate] = {
         template_id="landing_page_react_vite",
         supported_app_types=("landing_page",),
         build_files=_landing_files,
+    ),
+    "kohli_stats_react_vite": AppTemplate(
+        template_id="kohli_stats_react_vite",
+        supported_app_types=("kohli_stats",),
+        build_files=_kohli_stats_files,
     ),
     "generic_react_vite": AppTemplate(
         template_id="generic_react_vite",
