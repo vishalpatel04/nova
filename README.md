@@ -1,6 +1,6 @@
 # NOVA
 
-Personal AI operating system for Arth Agrawal — a production-quality nervous-system foundation with cloud-ready control plane, native iOS/macOS clients, and replaceable worker nodes.
+Personal AI operating system for — a production-quality nervous-system foundation with cloud-ready control plane, native iOS/macOS clients, and replaceable worker nodes.
 
 ## Architecture
 
