@@ -1,6 +1,6 @@
 # NOVA
 
-Personal AI operating system for — a production-quality nervous-system foundation with cloud-ready control plane, native iOS/macOS clients, and replaceable worker nodes.
+Personal AI operating system for Arth Agrawal — a production-quality nervous-system foundation with cloud-ready control plane, native iOS/macOS clients, and replaceable worker nodes.
 
 ## Architecture
 
@@ -135,3 +135,11 @@ Seven permanent commanders: **NOVA**, **MARS**, **MERCURY**, **JUPITER**, **VENU
 - [Configuration](docs/CONFIGURATION.md)
 - [Foundation Slice 1 Plan](docs/FOUNDATION_SLICE_1_PLAN.md)
 - [ADRs](docs/adr/)
+
+## Credits
+
+**Owner: Wing Aditya Singh**
+
+## License
+
+Private — Arth Agrawal.
